@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Báo cáo đồ án: Website học tiếng Anh</title>
+<style>
+:root{color-scheme:light}
+@page{size:A4;margin:25mm 20mm 25mm 30mm}
+*{box-sizing:border-box}
+body{margin:0;padding:24px;background:#fff;color:#000;font:13pt/1.5 "Times New Roman",Times,serif}
+main{max-width:780px;margin:0 auto}
+h1{margin:20px 0 8px;font-size:15pt;font-weight:700}
+h2{margin:16px 0 6px;font-size:13.5pt;font-weight:700}
+h3{margin:12px 0 4px;font-size:13pt;font-style:italic}
+p{margin:6px 0;text-align:justify}
+ul,ol{margin:6px 0;padding-left:26px}
+li{margin:3px 0}
+table{width:100%;margin:10px 0;border-collapse:collapse;font-size:12pt}
+th,td{padding:5px 8px;border:1px solid #000;text-align:left;vertical-align:top}
+th{background:#eee;text-align:center;font-weight:700}
+tr{break-inside:avoid}
+.fill{background:#fff2a8}
+.c{text-align:center}
+.b{font-weight:700}
+.pb{break-before:page}
+.cover{text-align:center}
+.cover p{text-align:center}
+.cover h1{margin:50px 0 6px;font-size:18pt;text-transform:uppercase}
+.fig{margin:12px 0;text-align:center;break-inside:avoid}
+.fig .box{display:flex;align-items:center;justify-content:center;min-height:180px;border:2px dashed #888;background:#fafafa;color:#666;font-size:11pt;padding:10px}
+.fig .cap{margin-top:4px;font-size:11pt;font-style:italic}
+code{font:11pt Consolas,"Courier New",monospace;background:#f3f3f3;padding:0 3px}
+pre{margin:8px 0;padding:8px 10px;font:10.5pt/1.4 Consolas,"Courier New",monospace;background:#f3f3f3;border:1px solid #ccc;white-space:pre-wrap;break-inside:avoid}
+.note{margin:10px 0;padding:6px 10px;border-left:4px solid #888;background:#f6f6f6;font-size:12pt}
+@media print{body{padding:0;font-size:12.5pt}main{max-width:none}}
+</style>
+</head>
+<body>
+<main>
+
+<section class="cover">
+<p class="b">TRƯỜNG ĐẠI HỌC NGOẠI NGỮ - TIN HỌC TP. HỒ CHÍ MINH</p>
+<p class="b">KHOA CÔNG NGHỆ THÔNG TIN</p>
+<p>__________________</p>
+<h1>WEBSITE HỌC TIẾNG ANH<br><span class="fill">[TÊN DỰ ÁN]</span></h1>
+<p>(Đồ án môn học Lập trình trên web)</p>
+<p class="b" style="margin-top:28px">Nhóm thực hiện: <span class="fill">[Số nhóm]</span></p>
+<table style="width:80%;margin:10px auto">
+<tr><th style="width:8%">STT</th><th>Họ tên</th><th style="width:30%">MSSV</th></tr>
+<tr><td class="c">1</td><td class="fill">[Họ tên]</td><td class="fill">[MSSV]</td></tr>
+<tr><td class="c">2</td><td class="fill">[Họ tên]</td><td class="fill">[MSSV]</td></tr>
+<tr><td class="c">3</td><td class="fill">[Họ tên]</td><td class="fill">[MSSV]</td></tr>
+<tr><td class="c">4</td><td class="fill">[Họ tên]</td><td class="fill">[MSSV]</td></tr>
+</table>
+<p class="b" style="margin-top:14px">Giảng viên hướng dẫn</p>
+<table style="width:80%;margin:6px auto">
+<tr><th style="width:8%">STT</th><th>Họ tên, học hàm, học vị</th></tr>
+<tr><td class="c">1</td><td class="fill">[Giảng viên 1]</td></tr>
+<tr><td class="c">2</td><td class="fill">[Giảng viên 2]</td></tr>
+</table>
+<p style="margin-top:30px">TP. Hồ Chí Minh, ngày <span class="fill">[..]</span> tháng <span class="fill">[..]</span> năm 2026</p>
+</section>
+
+<h1 class="pb">MỤC LỤC</h1>
+<ol style="list-style:none;padding-left:0">
+<li>1. Giới thiệu
+<ul style="list-style:none;padding-left:20px"><li>1.1. Tên đề tài</li><li>1.2. Mục đích</li><li>1.3. Chức năng chính</li><li>1.4. Đối tượng sử dụng</li></ul></li>
+<li>2. Phân tích và thiết kế
+<ul style="list-style:none;padding-left:20px"><li>2.1. Kiến trúc hệ thống</li><li>2.2. Công nghệ sử dụng</li><li>2.3. Cơ sở dữ liệu</li><li>2.4. Giao diện người dùng</li><li>2.5. API và luồng dữ liệu</li></ul></li>
+<li>3. Triển khai
+<ul style="list-style:none;padding-left:20px"><li>3.1. Cấu trúc thư mục dự án</li><li>3.2. Các module chính</li><li>3.3. Xử lý nghiệp vụ</li><li>3.4. Bảo mật</li></ul></li>
+<li>4. Kết quả và đánh giá
+<ul style="list-style:none;padding-left:20px"><li>4.1. Kết quả đạt được</li><li>4.2. Hạn chế</li><li>4.3. Hướng phát triển</li></ul></li>
+<li>Tài liệu tham khảo</li>
+<li>Phân công công việc</li>
+</ol>
+
+<h1 class="pb">1. Giới thiệu</h1>
+<h2>1.1. Tên đề tài</h2>
+<p>Xây dựng website học tiếng Anh hỗ trợ đọc hiểu, từ vựng và theo dõi tiến độ học tập.</p>
+
+<h2>1.2. Mục đích</h2>
+<p>Website giúp người học tự học tiếng Anh qua các hoạt động: đọc bài theo chủ đề, học từ vựng có phát âm, làm bài kiểm tra từ vựng và theo dõi chuỗi ngày học liên tục. Mục tiêu là tạo môi trường học tập tự chủ, giao diện đơn giản, dễ tiếp cận trên mọi thiết bị.</p>
+
+<h2>1.3. Chức năng chính</h2>
+<ul>
+<li><b>Đăng ký và đăng nhập:</b> xác thực email bằng mã OTP 6 chữ số, captcha Cloudflare Turnstile chống bot.</li>
+<li><b>Đọc hiểu:</b> danh sách bài đọc theo chủ đề, mỗi lần mở bài hệ thống ghi lượt xem.</li>
+<li><b>Từ vựng:</b> học từ theo chủ đề, xem nghĩa tiếng Việt, nghe phát âm từ Cambridge Dictionary.</li>
+<li><b>Quiz từ vựng:</b> hệ thống đưa nghĩa tiếng Việt, người dùng viết lại từ tiếng Anh, máy chủ chấm điểm và lưu kết quả.</li>
+<li><b>Theo dõi chuỗi ngày học:</b> hiển thị số ngày học liên tục, chuỗi dài nhất, lịch học từng tháng.</li>
+<li><b>Quản trị nội dung:</b> quản trị viên thêm, sửa, xoá chủ đề, bài đọc, từ vựng.</li>
+</ul>
+
+<h2>1.4. Đối tượng sử dụng</h2>
+<ul>
+<li><b>Học viên:</b> đăng ký tài khoản, sử dụng các chức năng học tập.</li>
+<li><b>Quản trị viên:</b> quản lý nội dung học (thêm, sửa, xoá), được phân quyền theo email cấu hình.</li>
+</ul>
+
+<h1 class="pb">2. Phân tích và thiết kế</h1>
+<h2>2.1. Kiến trúc hệ thống</h2>
+<p>Hệ thống theo mô hình <b>Client-Server</b> với kiến trúc <b>RESTful API</b>:</p>
+<ul>
+<li><b>Client (Front-end):</b> HTML, CSS, JavaScript thuần (không framework), chạy trong trình duyệt, gọi API để lấy và gửi dữ liệu dạng JSON.</li>
+<li><b>Server (Back-end):</b> Node.js với Express framework, xử lý logic nghiệp vụ, xác thực, phân quyền, truy vấn cơ sở dữ liệu.</li>
+<li><b>Database:</b> MongoDB (NoSQL), lưu trữ người dùng, nội dung học, kết quả quiz.</li>
+</ul>
+<div class="fig"><div class="box">
+[Sơ đồ]<br>
+Trình duyệt (HTML/JS) ←→ API JSON ←→ Express Server ←→ MongoDB<br>
+↓ (tích hợp)<br>
+Cloudflare Turnstile (captcha) | SMTP (gửi OTP) | Cambridge (audio)
+</div><div class="cap">Hình 2.1. Kiến trúc tổng quan</div></div>
+
+<h2>2.2. Công nghệ sử dụng</h2>
+<table>
+<tr><th style="width:30%">Thành phần</th><th>Công nghệ</th></tr>
+<tr><td>Ngôn ngữ lập trình</td><td>JavaScript (Node.js 18+ cho server, ES6+ cho client)</td></tr>
+<tr><td>Web framework</td><td>Express 4.19</td></tr>
+<tr><td>Cơ sở dữ liệu</td><td>MongoDB 6+ với Mongoose ODM 8</td></tr>
+<tr><td>Xác thực</td><td>JSON Web Token (JWT), bcryptjs (băm mật khẩu)</td></tr>
+<tr><td>Gửi email</td><td>nodemailer (SMTP)</td></tr>
+<tr><td>Captcha</td><td>Cloudflare Turnstile</td></tr>
+<tr><td>Audio phát âm</td><td>Cambridge Dictionary API (public)</td></tr>
+<tr><td>Công cụ phát triển</td><td><span class="fill">[VS Code, Git, Postman...]</span></td></tr>
+<tr><td>Triển khai</td><td><span class="fill">[Vercel/Railway/...], MongoDB Atlas</span></td></tr>
+</table>
+
+<h2>2.3. Cơ sở dữ liệu</h2>
+<p>Hệ thống sử dụng MongoDB với 9 collection. Quan hệ giữa các collection được thể hiện qua trường tham chiếu ObjectId.</p>
+
+<div class="fig">
+<svg viewBox="0 0 760 875" width="100%" role="img" aria-label="Sơ đồ cơ sở dữ liệu">
+<style>
+.erd text{font:11.5px Consolas,monospace;fill:#000}
+.erd .h{font-weight:700;font-size:12.5px}
+.erd .b{fill:#fff;stroke:#000;stroke-width:1.2}
+.erd .t{fill:#e6e6e6;stroke:#000;stroke-width:1.2}
+.erd .l{stroke:#000;stroke-width:1.2;fill:none}
+.erd .d{stroke:#000;stroke-width:1.2;fill:none;stroke-dasharray:5 3}
+.erd .n{font-size:11px;font-weight:700}
+</style>
+<g class="erd">
+<path class="l" d="M290,100 H220"/><path class="l" d="M385,168 V250"/>
+<path class="l" d="M560,110 H510 V255 H480"/><path class="l" d="M655,184 V230"/>
+<path class="l" d="M560,277 H480"/><path class="l" d="M560,427 H500 V305 H480"/>
+<path class="l" d="M385,420 V342"/><path class="l" d="M290,470 H115 V264"/>
+<path class="d" d="M480,498 H520 V446 H560"/>
+<text class="n" x="270" y="94">N</text><text class="n" x="224" y="94">1</text>
+<text class="n" x="391" y="184">N</text><text class="n" x="391" y="244">1</text>
+<text class="n" x="540" y="104">N</text><text class="n" x="486" y="248">1</text>
+<text class="n" x="661" y="198">1</text><text class="n" x="661" y="224">1</text>
+<text class="n" x="544" y="271">N</text><text class="n" x="486" y="271">1</text>
+<text class="n" x="544" y="421">N</text><text class="n" x="486" y="320">1</text>
+<text class="n" x="391" y="412">N</text><text class="n" x="391" y="358">1</text>
+<text class="n" x="270" y="464">N</text><text class="n" x="121" y="282">1</text>
+<text class="n" x="484" y="492">N</text><text class="n" x="544" y="440">1</text>
+<rect class="b" x="10" y="60" width="210" height="204"/><rect class="t" x="10" y="60" width="210" height="22"/>
+<text class="h" x="18" y="75">users</text>
+<text x="18" y="94">_id: ObjectId</text><text x="18" y="110">nickname: String</text>
+<text x="18" y="126">email: String (unique)</text><text x="18" y="142">password: String (hash)</text>
+<text x="18" y="158">role: user|admin</text><text x="18" y="174">timeActive: Number</text>
+<text x="18" y="190">lastActiveDate: String</text><text x="18" y="206">currentStreak: Number</text>
+<text x="18" y="222">longestStreak: Number</text><text x="18" y="238">activeDays: [String]</text>
+<text x="18" y="254">created: Date</text>
+<rect class="b" x="290" y="60" width="190" height="108"/><rect class="t" x="290" y="60" width="190" height="22"/>
+<text class="h" x="298" y="75">usertopics</text>
+<text x="298" y="94">_id: ObjectId</text><text x="298" y="110">user → users._id</text>
+<text x="298" y="126">topic → topics._id</text><text x="298" y="142">ratio: Number (0-100)</text>
+<text x="298" y="158">unique(user, topic)</text>
+<rect class="b" x="290" y="250" width="190" height="92"/><rect class="t" x="290" y="250" width="190" height="22"/>
+<text class="h" x="298" y="265">topics</text>
+<text x="298" y="284">_id: ObjectId</text><text x="298" y="300">name: String</text>
+<text x="298" y="316">type: reading|vocabulary</text><text x="298" y="332">unique(type, name)</text>
+<rect class="b" x="560" y="60" width="190" height="124"/><rect class="t" x="560" y="60" width="190" height="22"/>
+<text class="h" x="568" y="75">readings</text>
+<text x="568" y="94">_id: ObjectId</text><text x="568" y="110">topic → topics._id</text>
+<text x="568" y="126">title: String</text><text x="568" y="142">content: String</text>
+<text x="568" y="158">createdAt: Date</text><text x="568" y="174">updatedAt: Date</text>
+<rect class="b" x="560" y="230" width="190" height="126"/><rect class="t" x="560" y="230" width="190" height="22"/>
+<text class="h" x="568" y="245">quizzes</text>
+<text x="568" y="264">_id: ObjectId</text><text x="568" y="280">topic → topics._id</text>
+<text x="568" y="296">reading (unique)</text><text x="568" y="312">type: reading</text>
+<text x="568" y="328">views: Number</text><text x="568" y="344">timestamps</text>
+<rect class="b" x="560" y="380" width="190" height="124"/><rect class="t" x="560" y="380" width="190" height="22"/>
+<text class="h" x="568" y="395">vocabularies</text>
+<text x="568" y="414">_id: ObjectId</text><text x="568" y="430">topic → topics._id</text>
+<text x="568" y="446">word: String</text><text x="568" y="462">meaning: String</text>
+<text x="568" y="478">unique(topic, word)</text><text x="568" y="494">timestamps</text>
+<rect class="b" x="290" y="420" width="190" height="220"/><rect class="t" x="290" y="420" width="190" height="22"/>
+<text class="h" x="298" y="435">quizsessions</text>
+<text x="298" y="454">_id: ObjectId</text><text x="298" y="470">user → users._id</text>
+<text x="298" y="486">topic → topics._id</text><text x="298" y="502">items[].word → vocab</text>
+<text x="298" y="518">items[].answered</text><text x="298" y="534">items[].correct</text>
+<text x="298" y="550">answeredCount: Number</text><text x="298" y="566">correctCount: Number</text>
+<text x="298" y="582">finished: Boolean</text><text x="298" y="598">score: Number|null</text>
+<text x="298" y="614">expiresAt: Date (TTL)</text><text x="298" y="630">timestamps</text>
+<rect class="b" x="10" y="670" width="240" height="190"/><rect class="t" x="10" y="670" width="240" height="22"/>
+<text class="h" x="18" y="685">pendingregistrations</text>
+<text x="18" y="704">_id: ObjectId</text><text x="18" y="720">email: String (unique)</text>
+<text x="18" y="736">nickname: String</text><text x="18" y="752">passwordHash: String</text>
+<text x="18" y="768">otpHash: String</text><text x="18" y="784">attempts: Number</text>
+<text x="18" y="800">sends: Number</text><text x="18" y="816">lastSentAt: Date</text>
+<text x="18" y="832">expiresAt: Date (TTL)</text>
+<rect class="b" x="290" y="670" width="190" height="94"/><rect class="t" x="290" y="670" width="190" height="22"/>
+<text class="h" x="298" y="685">ratelimits</text>
+<text x="298" y="704">_id: ObjectId</text><text x="298" y="720">key: String (unique)</text>
+<text x="298" y="736">count: Number</text><text x="298" y="752">expiresAt: Date (TTL)</text>
+</g>
+</svg>
+<div class="cap">Hình 2.2. Sơ đồ cơ sở dữ liệu (TTL: tự động xoá khi hết hạn)</div>
+</div>
+
+<table>
+<tr><th style="width:24%">Collection</th><th>Mô tả</th></tr>
+<tr><td>users</td><td>Lưu tài khoản, vai trò, thông tin streak (chuỗi ngày học)</td></tr>
+<tr><td>topics</td><td>Chủ đề dùng chung cho đọc hiểu và từ vựng</td></tr>
+<tr><td>readings</td><td>Nội dung bài đọc</td></tr>
+<tr><td>vocabularies</td><td>Từ tiếng Anh, nghĩa tiếng Việt theo chủ đề</td></tr>
+<tr><td>quizzes</td><td>Thống kê lượt mở bài đọc (mỗi bài 1 bản ghi)</td></tr>
+<tr><td>quizsessions</td><td>Phiên làm quiz từ vựng, tự xoá sau 120 phút</td></tr>
+<tr><td>usertopics</td><td>Điểm quiz gần nhất của mỗi người theo chủ đề</td></tr>
+<tr><td>pendingregistrations</td><td>Đăng ký đang chờ nhập OTP, tự xoá khi hết hạn</td></tr>
+<tr><td>ratelimits</td><td>Giới hạn số lần gọi API theo IP</td></tr>
+</table>
+
+<h2>2.4. Giao diện người dùng</h2>
+<p>Website có 2 trang HTML chính:</p>
+<ul>
+<li><code>login.html</code> – Đăng nhập, đăng ký, nhập mã OTP</li>
+<li><code>index.html</code> – Trang học với 4 tab: Đọc hiểu, Từ vựng, Làm quiz, Chuỗi ngày</li>
+</ul>
+<p>Giao diện responsive, sử dụng CSS Grid và Flexbox, hoạt động tốt trên mobile. Các màn hình tiêu biểu:</p>
+
+<div class="fig"><div class="box">[Chèn ảnh chụp màn hình đăng nhập]</div><div class="cap">Hình 2.3. Trang đăng nhập</div></div>
+<div class="fig"><div class="box">[Chèn ảnh mục Đọc hiểu]</div><div class="cap">Hình 2.4. Mục Đọc hiểu</div></div>
+<div class="fig"><div class="box">[Chèn ảnh mục Từ vựng]</div><div class="cap">Hình 2.5. Mục Từ vựng</div></div>
+<div class="fig"><div class="box">[Chèn ảnh mục Làm quiz]</div><div class="cap">Hình 2.6. Làm quiz từ vựng</div></div>
+<div class="fig"><div class="box">[Chèn ảnh mục Chuỗi ngày]</div><div class="cap">Hình 2.7. Theo dõi chuỗi ngày học</div></div>
+<div class="fig"><div class="box">[Chèn ảnh giao diện quản trị]</div><div class="cap">Hình 2.8. Giao diện quản trị (thêm/sửa/xoá nội dung)</div></div>
+
+<h2>2.5. API và luồng dữ liệu</h2>
+<p>Server cung cấp RESTful API, tất cả response đều là JSON. Front-end gọi API bằng <code>fetch()</code>.</p>
+
+<h3>Các endpoint chính</h3>
+<table>
+<tr><th style="width:38%">Endpoint</th><th>Chức năng</th></tr>
+<tr><td>POST /api/auth/register</td><td>Đăng ký (captcha → gửi OTP qua email)</td></tr>
+<tr><td>POST /api/auth/verify-otp</td><td>Xác thực OTP, tạo tài khoản</td></tr>
+<tr><td>POST /api/auth/login</td><td>Đăng nhập, trả JWT token</td></tr>
+<tr><td>GET /api/auth/me</td><td>Lấy thông tin user hiện tại</td></tr>
+<tr><td>GET /api/reading/topics</td><td>Danh sách chủ đề đọc hiểu</td></tr>
+<tr><td>GET /api/reading</td><td>Danh sách bài đọc (có thể lọc theo topic)</td></tr>
+<tr><td>GET /api/reading/:id</td><td>Chi tiết bài đọc, ghi lượt xem, cập nhật streak</td></tr>
+<tr><td>POST /api/reading (admin)</td><td>Thêm bài đọc mới</td></tr>
+<tr><td>PUT /api/reading/:id (admin)</td><td>Sửa bài đọc</td></tr>
+<tr><td>DELETE /api/reading/:id (admin)</td><td>Xoá bài đọc</td></tr>
+<tr><td>GET /api/vocabulary/topics</td><td>Danh sách chủ đề từ vựng</td></tr>
+<tr><td>GET /api/vocabulary/topics/:id</td><td>Danh sách từ theo chủ đề (có audio URL)</td></tr>
+<tr><td>GET /api/vocabulary/topics/:id/words</td><td>Bắt đầu quiz: tạo session, trả nghĩa tiếng Việt</td></tr>
+<tr><td>POST /api/vocabulary/quiz/:sessionId/check</td><td>Chấm 1 câu trả lời</td></tr>
+<tr><td>POST /api/vocabulary/quiz/:sessionId/finish</td><td>Nộp bài, tính điểm, lưu kết quả, cập nhật streak</td></tr>
+<tr><td>GET /api/streak</td><td>Thông tin chuỗi ngày học, lịch học</td></tr>
+</table>
+
+<h3>Luồng dữ liệu ví dụ: Làm quiz từ vựng</h3>
+<pre>1. User chọn chủ đề → GET /api/vocabulary/topics/:id/words
+   ← Server: tạo QuizSession, xáo trộn từ, trả { sessionId, words: {id: nghĩa} }
+
+2. Với mỗi từ, user nhập đáp án → POST /api/vocabulary/quiz/:sessionId/check
+   Body: { wordId, answer }
+   ← Server: chuẩn hoá đáp án, so sánh, cập nhật session, trả { correct: true/false }
+
+3. User nộp bài hoặc hết từ → POST /api/vocabulary/quiz/:sessionId/finish
+   ← Server: tính điểm, lưu vào UserTopic, cập nhật streak, trả kết quả đầy đủ</pre>
+
+<h1 class="pb">3. Triển khai</h1>
+<h2>3.1. Cấu trúc thư mục dự án</h2>
+<pre>webtienganh-backend/
+├── public/              # Front-end (HTML, CSS, JS)
+│   ├── index.html
+│   ├── login.html
+│   ├── styles.css
+│   ├── core.js         # Auth, API client
+│   ├── app.js          # Điều phối tab
+│   ├── reading.js      # Tab đọc hiểu
+│   ├── vocab.js        # Tab từ vựng
+│   ├── quiz.js         # Tab làm quiz
+│   └── streak.js       # Tab chuỗi ngày
+├── src/
+│   ├── models/         # Mongoose schemas
+│   │   ├── User.js
+│   │   ├── Topic.js
+│   │   ├── Reading.js
+│   │   ├── Vocabulary.js
+│   │   ├── Quiz.js
+│   │   ├── QuizSession.js
+│   │   ├── UserTopic.js
+│   │   ├── PendingRegistration.js
+│   │   └── RateLimit.js
+│   ├── controllers/    # Logic xử lý nghiệp vụ
+│   │   ├── auth.js
+│   │   ├── reading.js
+│   │   ├── vocabulary.js
+│   │   ├── vocabularyQuiz.js
+│   │   └── streak.js
+│   ├── routes/         # Định nghĩa endpoint
+│   │   ├── index.js
+│   │   ├── auth.js
+│   │   ├── reading.js
+│   │   ├── vocabulary.js
+│   │   └── streak.js
+│   ├── middlewares/    # Middleware
+│   │   ├── auth.js     # authRequired, adminRequired
+│   │   └── errorHandler.js
+│   ├── utils/          # Các hàm tiện ích
+│   │   ├── asyncHandler.js
+│   │   ├── httpError.js
+│   │   ├── mailer.js
+│   │   ├── turnstile.js
+│   │   ├── audio.js
+│   │   ├── date.js
+│   │   ├── streak.js
+│   │   └── validate.js
+│   ├── config/         # Cấu hình
+│   │   └── index.js
+│   ├── scripts/        # Script hỗ trợ
+│   │   └── seed.js     # Nhập dữ liệu mẫu
+│   ├── app.js          # Khởi tạo Express app
+│   └── server.js       # Entry point
+├── .env                # Biến môi trường
+├── package.json
+└── vercel.json         # Cấu hình deploy Vercel</pre>
+
+<h2>3.2. Các module chính</h2>
+
+<h3>Models (Mongoose Schema)</h3>
+<p>Định nghĩa cấu trúc dữ liệu, ràng buộc, quan hệ giữa các collection. Ví dụ model <code>Reading</code>:</p>
+<pre>const readingSchema = new mongoose.Schema({
+  topic: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Topic',
+    required: true,
+    index: true
+  },
+  title: { type: String, required: true, trim: true, maxlength: 200 },
+  content: { type: String, required: true, maxlength: 20000 }
+}, { timestamps: true });
+
+module.exports = mongoose.model('Reading', readingSchema);</pre>
+
+<h3>Controllers</h3>
+<p>Xử lý logic nghiệp vụ, giao tiếp với models, trả response. Ví dụ controller bắt đầu quiz từ vựng (<code>vocabularyQuiz.js</code>):</p>
+<pre>exports.startQuiz = asyncHandler(async (req, res) => {
+  const topic = await findTopic(req.params.topicId);
+  const words = await Vocabulary.find({ topic: topic._id })
+    .select('meaning').lean();
+  if (!words.length) throw new HttpError(404, 'Chủ đề chưa có từ vựng');
+
+  const shuffled = shuffle(words);  // Xáo trộn thứ tự
+  const session = await QuizSession.create({
+    user: req.userId || null,
+    topic: topic._id,
+    items: shuffled.map(w => ({
+      word: w._id,
+      answered: false,
+      correct: false
+    })),
+    answeredCount: 0,
+    correctCount: 0,
+    finished: false,
+    expiresAt: new Date(Date.now() + config.quizSessionTtlMinutes * 60000)
+  });
+
+  // Chỉ trả nghĩa tiếng Việt, không trả từ tiếng Anh (tránh lộ đáp án)
+  const wordsMap = {};
+  shuffled.forEach(w => { wordsMap[w._id] = w.meaning; });
+  res.json({ sessionId: session._id, words: wordsMap });
+});</pre>
+
+<h3>Routes</h3>
+<p>Định nghĩa endpoint, gắn middleware xác thực, gọi controller. Ví dụ <code>routes/reading.js</code>:</p>
+<pre>const router = require('express').Router();
+const { authOptional, adminRequired } = require('../middlewares/auth');
+const ctrl = require('../controllers/reading');
+
+router.get('/topics', ctrl.getTopics);
+router.get('/', ctrl.getReadings);
+router.get('/:id', authOptional, ctrl.getReading);  // Ghi streak nếu đăng nhập
+router.post('/', adminRequired, ctrl.createReading);
+router.put('/:id', adminRequired, ctrl.updateReading);
+router.delete('/:id', adminRequired, ctrl.deleteReading);
+
+module.exports = router;</pre>
+
+<h3>Middlewares</h3>
+<p><b>authRequired:</b> đọc JWT từ header <code>Authorization: Bearer &lt;token&gt;</code>, verify, gán <code>req.userId</code>. Nếu token thiếu hoặc không hợp lệ → trả 401.</p>
+<p><b>adminRequired:</b> gọi <code>authRequired</code>, sau đó kiểm tra <code>User.role === 'admin'</code>. Không phải admin → trả 403.</p>
+<p><b>errorHandler:</b> bắt mọi lỗi, trả JSON <code>{ error: message }</code> với status code phù hợp.</p>
+
+<h3>Front-end (Single Page Application thủ công)</h3>
+<p>Không dùng framework. Mỗi tab có một file JS riêng, gọi hàm <code>api()</code> trong <code>core.js</code> để gọi server, sau đó dựng HTML bằng template string và gán vào DOM:</p>
+<pre>// core.js
+async function api(method, path, body) {
+  const opt = { method, headers: {} };
+  const token = localStorage.getItem('token');
+  if (token) opt.headers.Authorization = 'Bearer ' + token;
+  if (body) {
+    opt.headers['Content-Type'] = 'application/json';
+    opt.body = JSON.stringify(body);
+  }
+  const res = await fetch(apiBase + path, opt);
+  if (!res.ok) {
+    if (res.status === 401) {
+      localStorage.removeItem('token');
+      location.href = 'login.html';
+    }
+    const err = await res.json().catch(() => ());
+    throw new Error(err.error || 'Lỗi kết nối');
+  }
+  return res.json();
+}</pre>
+
+<h2>3.3. Xử lý nghiệp vụ</h2>
+
+<h3>Đăng ký với OTP</h3>
+<ol>
+<li>User điền form → client gọi Turnstile.getResponse() → POST /api/auth/register với captcha token</li>
+<li>Server: xác thực captcha với Cloudflare, sinh mã OTP 6 chữ số, băm bằng bcrypt, lưu vào <code>pendingregistrations</code> (TTL 10 phút), gửi email</li>
+<li>User nhập OTP → POST /api/auth/verify-otp</li>
+<li>Server: so sánh hash, đúng thì tạo <code>User</code>, xoá pending, trả JWT</li>
+</ol>
+
+<h3>Chấm quiz từ vựng</h3>
+<p>Mỗi từ chỉ được trả lời 1 lần. Server chuẩn hoá đáp án (trim, lowercase, xoá khoảng trắng thừa), so sánh với từ gốc. Dùng <code>findOneAndUpdate</code> với điều kiện <code>items.$.answered === false</code> để đảm bảo không chấm lại:</p>
+<pre>const result = await QuizSession.findOneAndUpdate(
+  { _id: sessionId, 'items._id': itemId, 'items.answered': false },
+  {
+    $set: {
+      'items.$.answered': true,
+      'items.$.correct': isCorrect
+    },
+    $inc: {
+      answeredCount: 1,
+      correctCount: isCorrect ? 1 : 0
+    }
+  },
+  { new: true }
+).lean();
+
+if (!result) throw new HttpError(409, 'Câu này đã trả lời rồi');</pre>
+
+<h3>Tính streak (chuỗi ngày học)</h3>
+<p>Hàm <code>touchStreak(userId)</code> chạy theo múi giờ UTC+7 (Việt Nam). Lấy ngày hiện tại dạng YYYY-MM-DD, so sánh với <code>lastActiveDate</code>:</p>
+<ul>
+<li>Cùng ngày → không làm gì</li>
+<li>Ngày liền kề → tăng <code>currentStreak</code>, cập nhật <code>longestStreak</code> nếu cần, thêm ngày vào <code>activeDays[]</code></li>
+<li>Ngày gián đoạn → reset <code>currentStreak = 1</code></li>
+</ul>
+<p>Gọi khi: (1) đọc bài, (2) hoàn thành quiz.</p>
+
+<h3>Chống gian lận: tự động nộp bài khi chuyển tab</h3>
+<pre>// quiz.js
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && quizState.active && !quizState.finished) {
+    finishQuiz();  // Tự động nộp bài
+  }
+});</pre>
+
+<h2>3.4. Bảo mật</h2>
+<ul>
+<li><b>Mật khẩu:</b> băm bằng bcryptjs (10 rounds) trước khi lưu, không bao giờ lưu plaintext.</li>
+<li><b>JWT:</b> ký bằng secret key, thời gian sống 30 ngày, lưu trong localStorage (không dùng cookie).</li>
+<li><b>OTP:</b> băm trước khi lưu vào database, giới hạn 5 lần thử sai, 60s giữa các lần gửi lại.</li>
+<li><b>Rate limit:</b> giới hạn số lần gọi đăng ký, đăng nhập, OTP, quiz theo IP (dùng collection <code>ratelimits</code> với TTL).</li>
+<li><b>Captcha:</b> Cloudflare Turnstile ở form đăng ký, server xác thực token với Cloudflare API.</li>
+<li><b>CORS:</b> chỉ cho phép origin được cấu hình trong <code>.env</code> (production).</li>
+<li><b>Phân quyền:</b> mọi API thêm/sửa/xoá đều qua middleware <code>adminRequired</code>.</li>
+<li><b>XSS:</b> front-end escape mọi dữ liệu từ user trước khi chèn vào HTML (hàm <code>esc()</code>).</li>
+<li><b>NoSQL Injection:</b> Mongoose tự động sanitize query, không dùng <code>$where</code>.</li>
+</ul>
+
+<h1 class="pb">4. Kết quả và đánh giá</h1>
+<h2>4.1. Kết quả đạt được</h2>
+<p>Dự án đã hoàn thành các chức năng chính theo yêu cầu đề tài:</p>
+<ul>
+<li><b>Đăng ký và đăng nhập bảo mật:</b> xác thực email bằng OTP, captcha Turnstile chống bot, JWT lưu trạng thái đăng nhập.</li>
+<li><b>Học từ vựng:</b> danh sách từ theo chủ đề, nghe phát âm từ Cambridge Dictionary, giao diện trực quan.</li>
+<li><b>Quiz từ vựng:</b> viết lại từ từ nghĩa tiếng Việt, máy chủ chấm điểm theo thời gian thực, lưu kết quả theo chủ đề, chống gian lận (tự động nộp khi chuyển tab).</li>
+<li><b>Đọc bài theo chủ đề:</b> hệ thống ghi lượt xem, cập nhật chuỗi ngày học khi mở bài.</li>
+<li><b>Theo dõi tiến độ:</b> chuỗi ngày học liên tục, chuỗi dài nhất, lịch học từng tháng hiển thị trực quan.</li>
+<li><b>Quản trị nội dung:</b> admin thêm/sửa/xoá chủ đề, bài đọc, từ vựng qua giao diện trên cùng một trang.</li>
+<li><b>Responsive:</b> giao diện hoạt động tốt trên desktop và mobile.</li>
+<li><b>Triển khai thành công:</b> deploy lên <span class="fill">[Vercel/Railway/...]</span>, kết nối MongoDB Atlas, hoạt động ổn định.</li>
+</ul>
+
+<h2>4.2. Hạn chế</h2>
+<ul>
+<li><b>Chưa có phần Ngữ pháp:</b> thiết kế ban đầu có dự kiến nhưng chưa triển khai.</li>
+<li><b>Chưa có trang quản trị riêng:</b> admin và user dùng chung giao diện <code>index.html</code>, giao diện admin chưa được tối ưu.</li>
+<li><b>Chưa có tìm kiếm:</b> khi số lượng chủ đề, bài đọc nhiều, người dùng phải cuộn để tìm.</li>
+<li><b>Chưa có phân trang:</b> danh sách trả về toàn bộ, có thể chậm khi dữ liệu lớn.</li>
+<li><b>Âm thanh phát âm phụ thuộc vào Cambridge:</b> nếu Cambridge đổi URL hoặc chặn, âm thanh sẽ không phát được.</li>
+<li><b>Chưa lưu lịch sử làm quiz:</b> chỉ lưu điểm gần nhất, không xem lại các lần trước.</li>
+<li><b>Email OTP có thể vào spam:</b> tuỳ cấu hình SMTP và domain.</li>
+</ul>
+
+<h2>4.3. Hướng phát triển</h2>
+<ul>
+<li><b>Thêm kỹ năng Viết:</b> người dùng viết đoạn văn từ đề bài, hệ thống dùng AI (OpenAI API hoặc Claude API) chấm ngữ pháp, từ vựng, gợi ý sửa lỗi.</li>
+<li><b>Thêm phần Ngữ pháp:</b> bài giảng ngữ pháp, quiz trắc nghiệm ngữ pháp theo chủ đề.</li>
+<li><b>Trang quản trị riêng:</b> giao diện <code>admin.html</code> với bảng CRUD đầy đủ, thống kê số người dùng, bài đọc, top chủ đề được làm nhiều nhất.</li>
+<li><b>Dữ liệu sinh bằng AI:</b> import nội dung từ tài liệu, dùng AI tóm tắt hoặc tạo câu hỏi; AI sinh bài đọc và từ vựng theo chủ đề người dùng nhập.</li>
+<li><b>Tìm kiếm và phân trang:</b> tìm bài đọc, từ vựng theo từ khoá, phân trang danh sách.</li>
+<li><b>Lưu lịch sử quiz:</b> xem lại điểm từng lần làm, biểu đồ tiến bộ theo thời gian.</li>
+<li><b>Chế độ ôn tập:</b> hiện lại các từ đã trả lời sai trong quiz trước.</li>
+<li><b>Âm thanh ghi âm:</b> người dùng đọc từ, hệ thống so sánh với phát âm chuẩn (Web Speech API).</li>
+<li><b>Thông báo đẩy:</b> nhắc nhở học hàng ngày để giữ streak.</li>
+<li><b>Chế độ tối (Dark mode):</b> cho người dùng học ban đêm.</li>
+</ul>
+
+<h1 class="pb">TÀI LIỆU THAM KHẢO</h1>
+<ol>
+<li>Express.js Documentation. <i>https://expressjs.com/</i></li>
+<li>Mongoose Documentation. <i>https://mongoosejs.com/docs/</i></li>
+<li>MongoDB Manual. <i>https://www.mongodb.com/docs/manual/</i></li>
+<li>MDN Web Docs – JavaScript. <i>https://developer.mozilla.org/en-US/docs/Web/JavaScript</i></li>
+<li>Node.js Documentation. <i>https://nodejs.org/docs/</i></li>
+<li>JSON Web Tokens (JWT). <i>https://jwt.io/</i></li>
+<li>Cloudflare Turnstile Documentation. <i>https://developers.cloudflare.com/turnstile/</i></li>
+<li>Cambridge Dictionary. <i>https://dictionary.cambridge.org/</i></li>
+<li>bcrypt.js Documentation. <i>https://github.com/dcodeIO/bcrypt.js</i></li>
+<li>nodemailer Documentation. <i>https://nodemailer.com/</i></li>
+<li class="fill">[Nhóm bổ sung nguồn khác nếu có: sách, bài báo, StackOverflow, tutorial...]</li>
+</ol>
+
+<h1 class="pb">PHÂN CÔNG CÔNG VIỆC</h1>
+<table>
+<tr><th style="width:25%">Thành viên</th><th>Nhiệm vụ chính</th><th style="width:12%">Tỷ lệ</th></tr>
+<tr>
+<td class="fill">[Họ tên 1]<br>[MSSV]</td>
+<td class="fill">[Backend: models (User, Topic, Reading, PendingRegistration, RateLimit), controllers (auth, reading), middlewares (authRequired, adminRequired), routes (/auth, /reading), utils (mailer, turnstile, validate), script seed, triển khai Vercel, cấu hình MongoDB Atlas]</td>
+<td class="c fill">[25%]</td>
+</tr>
+<tr>
+<td class="fill">[Họ tên 2]<br>[MSSV]</td>
+<td class="fill">[Backend: models (Vocabulary, QuizSession, UserTopic, Quiz), controllers (vocabulary, vocabularyQuiz, streak), routes (/vocabulary, /streak), utils (audio, date, streak), logic chấm điểm quiz, xử lý streak múi giờ VN, API rate limit]</td>
+<td class="c fill">[25%]</td>
+</tr>
+<tr>
+<td class="fill">[Họ tên 3]<br>[MSSV]</td>
+<td class="fill">[Frontend: login.html, login.js (đăng nhập, đăng ký, OTP, Turnstile), core.js (auth, api client, error handling), styles.css (layout chính, responsive mobile, tab navigation), kiểm thử giao diện trên nhiều thiết bị]</td>
+<td class="c fill">[25%]</td>
+</tr>
+<tr>
+<td class="fill">[Họ tên 4]<br>[MSSV]</td>
+<td class="fill">[Frontend: reading.js (tab đọc hiểu), vocab.js (tab từ vựng, tích hợp audio Cambridge), quiz.js (tab làm quiz, logic chống chuyển tab), streak.js (tab chuỗi ngày, lịch học), app.js (điều phối tab), viết báo cáo đồ án]</td>
+<td class="c fill">[25%]</td>
+</tr>
+</table>
+<p class="note"><b>Lưu ý:</b> Nhóm điền tên, MSSV, mô tả nhiệm vụ và tỷ lệ thực tế của mỗi người. Tổng tỷ lệ phải bằng 100%.</p>
+
+<div style="margin-top:50px">
+<table style="width:100%;border:none">
+<tr>
+<td style="border:none;width:50%;text-align:center;vertical-align:top">
+<p class="b">Giảng viên hướng dẫn</p>
+<p style="margin-top:60px" class="fill">[Họ tên, chữ ký]</p>
+</td>
+<td style="border:none;width:50%;text-align:center;vertical-align:top">
+<p><i>TP. Hồ Chí Minh, ngày <span class="fill">[..]</span> tháng <span class="fill">[..]</span> năm 2026</i></p>
+<p class="b" style="margin-top:8px">Nhóm trưởng</p>
+<p style="margin-top:60px" class="fill">[Họ tên, chữ ký]</p>
+</td>
+</tr>
+</table>
+</div>
+
+</main>
+</body>
+</html>

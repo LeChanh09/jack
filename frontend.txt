@@ -1,0 +1,1796 @@
+﻿=== FILE: app.js ===
+'use strict';
+// Äiá»u phá»‘i trang: váº½ giao diá»‡n, chuyá»ƒn tab, xá»­ lÃ½ báº¥m nÃºt / gá»­i form, khá»Ÿi Ä‘á»™ng.
+function render() {
+  document.querySelectorAll('.tabs [role=tab]').forEach((b) => b.setAttribute('aria-selected', b.dataset.tab === S.tab));
+  const views = { reading: readingView, vocab: vocabView, quiz: quizView, streak: streakView };
+  $('#view').innerHTML = views[S.tab]();
+  syncHash();
+  const f = $('[data-autofocus]');
+  if (f) f.focus();
+}
+
+// Ghi vá»‹ trÃ­ hiá»‡n táº¡i lÃªn Ä‘á»‹a chá»‰ trang (pháº§n sau dáº¥u #) Ä‘á»ƒ táº£i láº¡i trang váº«n Ä‘á»©ng Ä‘Ãºng chá»—.
+// VÃ­ dá»¥: #reading?t=<chá»§ Ä‘á»>&id=<bÃ i Ä‘ang Ä‘á»c>, #vocab?id=<topic Ä‘ang má»Ÿ>, #streak
+// DÃ¹ng replaceState nÃªn khÃ´ng táº¡o thÃªm má»¥c trong lá»‹ch sá»­ trÃ¬nh duyá»‡t.
+const TABS = ['reading', 'vocab', 'quiz', 'streak'];
+function hashFor() {
+  const p = new URLSearchParams();
+  if (S.tab === 'reading') {
+    if (S.reading.topic) p.set('t', S.reading.topic);
+    if (S.reading.open) p.set('id', S.reading.open.reading._id);
+  } else if (S.tab === 'vocab' && S.vocab.study) {
+    p.set('id', S.vocab.study._id);
+  }
+  const q = p.toString();
+  return '#' + S.tab + (q ? '?' + q : '');
+}
+function syncHash() {
+  const h = hashFor();
+  if (location.hash !== h) history.replaceState(null, '', location.pathname + location.search + h);
+}
+function readHash() {
+  const [name, qs] = location.hash.slice(1).split('?');
+  const p = new URLSearchParams(qs || '');
+  const clean = (v) => (/^[\w-]{1,40}$/.test(v || '') ? v : ''); // chá»‰ nháº­n kÃ½ tá»± an toÃ n, bá» giÃ¡ trá»‹ láº¡
+  return { tab: TABS.includes(name) ? name : 'reading', t: clean(p.get('t')), id: clean(p.get('id')) };
+}
+
+// KhÃ´i phá»¥c trang theo Ä‘á»‹a chá»‰ khi táº£i láº¡i. BÃ i hoáº·c topic khÃ´ng cÃ²n tá»“n táº¡i thÃ¬ bá» qua vÃ  vá» danh sÃ¡ch.
+async function restore() {
+  const h = readHash();
+  S.tab = h.tab;
+  $('#view').innerHTML = '<p class="empty">Äang táº£iâ€¦</p>';
+  try {
+    if (S.tab === 'reading') {
+      S.reading.topic = h.t;
+      try {
+        await loadReading();
+      } catch (e) {
+        S.reading.topic = '';
+        await loadReading();
+      }
+      if (h.id) {
+        try {
+          const o = await api('GET', '/reading/' + h.id);
+          S.reading.open = o;
+          showStreak(o.streak);
+        } catch (e) {
+          toast('BÃ i Ä‘á»c nÃ y khÃ´ng cÃ²n tá»“n táº¡i', true);
+        }
+      }
+    } else if (S.tab === 'vocab') {
+      if (h.id) S.vocab.study = { _id: h.id };
+      try {
+        await loadVocab();
+      } catch (e) {
+        S.vocab.study = null;
+        await loadTopics();
+        toast('Topic nÃ y khÃ´ng cÃ²n tá»“n táº¡i', true);
+      }
+    } else {
+      await loaders[S.tab](); // quiz vÃ  streak: Ä‘á»©ng Ä‘Ãºng tab; bÃ i quiz Ä‘ang lÃ m dá»Ÿ khÃ´ng khÃ´i phá»¥c Ä‘Æ°á»£c
+    }
+  } finally {
+    render();
+  }
+}
+
+const loaders = {
+  reading: () => loadReading(),
+  vocab: () => loadVocab(),
+  quiz: () => loadTopics(),
+  streak: () => loadStreak(),
+};
+actions.tab = (el) => {
+  S.tab = el.dataset.tab;
+  document.querySelectorAll('.tabs [role=tab]').forEach((b) => b.setAttribute('aria-selected', b.dataset.tab === S.tab));
+  $('#view').innerHTML = '<p class="empty">Äang táº£iâ€¦</p>';
+  run(async () => {
+    try { await loaders[S.tab](); } finally { render(); }
+  });
+};
+actions.logout = () => {
+  Auth.clear();
+  location.href = 'login.html';
+};
+
+// NÃºt cÃ³ data-confirm: báº¥m láº§n 1 chá»‰ "lÃªn Ä‘áº¡n", báº¥m láº§n 2 trong 3,5 giÃ¢y má»›i cháº¡y tháº­t
+let armed = null;
+function disarm(el) {
+  el.textContent = el.dataset.label;
+  el.classList.remove('armed');
+  if (armed === el) armed = null;
+}
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-act]');
+  const act = el && actions[el.dataset.act];
+  if (!act) return;
+  if (el.dataset.confirm && armed !== el) {
+    if (armed) disarm(armed);
+    armed = el;
+    el.dataset.label = el.textContent;
+    el.textContent = el.dataset.confirm;
+    el.classList.add('armed');
+    setTimeout(() => { if (armed === el) disarm(el); }, 3500);
+    return;
+  }
+  armed = null;
+  act(el, e);
+});
+document.addEventListener('submit', (e) => {
+  const f = e.target.closest('[data-form]');
+  const fn = f && forms[f.dataset.form];
+  if (!fn) return;
+  e.preventDefault();
+  run(() => fn(Object.fromEntries(new FormData(f)), f));
+});
+
+// Ã” tÃ¬m kiáº¿m: lá»c danh sÃ¡ch ngay khi gÃµ, khÃ´ng váº½ láº¡i trang nÃªn con trá» khÃ´ng bá»‹ máº¥t
+document.addEventListener('input', (e) => {
+  const box = e.target.closest('[data-filter]');
+  if (!box) return;
+  const list = $(box.dataset.filter);
+  const q = fold(box.value.trim());
+  let shown = 0;
+  list.querySelectorAll('li[data-name]').forEach((li) => {
+    const hit = li.dataset.name.includes(q);
+    li.hidden = !hit;
+    if (hit) shown += 1;
+  });
+  const none = $(box.dataset.none);
+  if (none) none.hidden = shown > 0;
+  // Topic Ä‘ang chá»n bá»‹ áº©n thÃ¬ chuyá»ƒn sang topic Ä‘áº§u tiÃªn cÃ²n hiá»‡n, Ä‘á»ƒ khÃ´ng lÃ m bÃ i vá»›i topic khÃ´ng nhÃ¬n tháº¥y
+  const checked = list.querySelector('input[type=radio]:checked');
+  if (checked && checked.closest('li').hidden) {
+    const first = list.querySelector('li:not([hidden]) input[type=radio]');
+    if (first) first.checked = true;
+  }
+});
+// Nháº¥n Enter trong Ã´ tÃ¬m kiáº¿m: chá»n káº¿t quáº£ Ä‘áº§u tiÃªn (quiz thÃ¬ báº¯t Ä‘áº§u luÃ´n, tá»« vá»±ng thÃ¬ má»Ÿ topic)
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  const box = e.target.closest('[data-filter]');
+  if (!box) return;
+  e.preventDefault();
+  const first = $(box.dataset.filter).querySelector('li:not([hidden])');
+  if (!first) return;
+  const radio = first.querySelector('input[type=radio]');
+  if (radio) {
+    radio.checked = true;
+    box.form.requestSubmit();
+  } else {
+    const open = first.querySelector('.row-link');
+    if (open) open.click();
+  }
+});
+
+function paintUser() {
+  const u = Auth.user() || {};
+  $('#user-name').textContent = u.nickname || '';
+  $('#user-role').hidden = u.role !== 'admin';
+  $('#streak-count').textContent = u.currentStreak || 0;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (!Auth.token() || !Auth.user()) {
+    location.href = 'login.html';
+    return;
+  }
+  paintUser();
+  run(async () => {
+    // Há»i server Ä‘á»ƒ xÃ¡c nháº­n token cÃ²n hiá»‡u lá»±c vÃ  láº¥y vai trÃ², chuá»—i ngÃ y má»›i nháº¥t.
+    // Cháº¡y song song vá»›i viá»‡c táº£i ná»™i dung trang Ä‘á»ƒ khÃ´ng pháº£i chá» hai lÆ°á»£t ná»‘i Ä‘uÃ´i nhau.
+    const roleBefore = (Auth.user() || {}).role;
+    const meP = api('GET', '/auth/me').then((me) => {
+      Auth.setUser({ ...Auth.user(), ...me });
+      paintUser();
+      return me;
+    });
+    const [me] = await Promise.all([meP, restore()]);
+    // Vai trÃ² Ä‘á»•i (vÃ­ dá»¥ vá»«a Ä‘Æ°á»£c cáº¥p quyá»n quáº£n trá»‹) thÃ¬ váº½ láº¡i má»™t láº§n SAU KHI trang Ä‘Ã£ táº£i xong,
+    // Ä‘á»ƒ hiá»‡n hoáº·c áº©n cÃ¡c nÃºt quáº£n trá»‹. Váº½ láº¡i giá»¯a chá»«ng cÃ³ thá»ƒ gáº·p dá»¯ liá»‡u chÆ°a táº£i Ä‘á»§.
+    if (me.role !== roleBefore) render();
+  });
+});
+
+
+
+
+=== FILE: core-b.js ===
+/* Thuá»™c giao diá»‡n báº£ng Ä‘en Ä‘Ã£ bá». File nÃ y cÃ³ thá»ƒ xoÃ¡. */
+
+
+
+
+=== FILE: core.js ===
+'use strict';
+// Pháº§n lÃµi dÃ¹ng chung: tiá»‡n Ã­ch, tráº¡ng thÃ¡i, Ä‘Äƒng nháº­p, gá»i API, phÃ¡t Ã¢m.
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// Bá» dáº¥u tiáº¿ng Viá»‡t vÃ  háº¡ chá»¯ thÆ°á»ng Ä‘á»ƒ tÃ¬m kiáº¿m khÃ´ng cáº§n gÃµ dáº¥u ("Gia Ä‘Ã¬nh" khá»›p vá»›i "gia dinh")
+const fold = (s) => String(s ?? '').normalize('NFD').replace(/\p{M}/gu, '').replace(/[Ä‘Ä]/g, 'd').toLowerCase();
+
+// ThÃ´ng tin Ä‘Äƒng nháº­p do login.js lÆ°u: token, user, nguá»“n dá»¯ liá»‡u (mock | live) vÃ  Ä‘á»‹a chá»‰ backend
+const Auth = {
+  token: () => localStorage.getItem('token'),
+  user() {
+    try { return JSON.parse(localStorage.getItem('user')); } catch (e) { return null; }
+  },
+  mode: () => localStorage.getItem('authMode') || 'mock',
+  base: () => localStorage.getItem('authBase') || '',
+  setUser: (u) => localStorage.setItem('user', JSON.stringify(u)),
+  clear() {
+    ['token', 'user', 'authMode', 'authBase'].forEach((k) => localStorage.removeItem(k));
+  },
+};
+const isLive = () => Auth.mode() === 'live';
+const isAdmin = () => (Auth.user() || {}).role === 'admin';
+
+// Tráº¡ng thÃ¡i toÃ n trang
+const S = {
+  tab: 'reading',
+  reading: { topics: [], items: [], topic: '', open: null, edit: false },
+  vocab: { topics: [], study: null, editTopic: false, editWord: null },
+  quiz: null,
+  quizTopic: '',
+  streak: null, // { data, y, m }
+};
+const actions = {}; // data-act  -> hÃ m xá»­ lÃ½ khi báº¥m
+const forms = {};   // data-form -> hÃ m xá»­ lÃ½ khi gá»­i form
+
+let _t;
+function toast(msg, bad) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.toggle('err', !!bad);
+  el.classList.add('show');
+  clearTimeout(_t);
+  _t = setTimeout(() => el.classList.remove('show'), 4000);
+}
+const run = (fn) => Promise.resolve().then(fn).catch((e) => toast(e.message, true));
+
+// Má»™t cá»­a duy nháº¥t gá»i API: dá»¯ liá»‡u máº«u hoáº·c backend tháº­t, luÃ´n kÃ¨m token
+async function api(method, path, body) {
+  let status, data;
+  try {
+    if (isLive()) {
+      const headers = {};
+      if (body) headers['Content-Type'] = 'application/json';
+      if (Auth.token()) headers.Authorization = 'Bearer ' + Auth.token();
+      const res = await fetch(Auth.base().replace(/\/+$/, '') + '/api' + path, {
+        method, headers, body: body ? JSON.stringify(body) : undefined,
+      });
+      status = res.status;
+      data = status === 204 ? null : await res.json().catch(() => null);
+    } else {
+      ({ status, data } = mockApi(method, path, body, Auth.token()));
+    }
+  } catch (e) {
+    throw new Error('KhÃ´ng káº¿t ná»‘i Ä‘Æ°á»£c backend. Kiá»ƒm tra server Ä‘ang cháº¡y rá»“i Ä‘Äƒng nháº­p láº¡i.');
+  }
+  if (status === 401) {
+    Auth.clear();
+    location.href = 'login.html';
+    throw new Error('PhiÃªn Ä‘Äƒng nháº­p Ä‘Ã£ háº¿t háº¡n, hÃ£y Ä‘Äƒng nháº­p láº¡i');
+  }
+  if (status >= 400) throw new Error((data && data.error) || 'Lá»—i ' + status);
+  return data;
+}
+
+// Cáº­p nháº­t sá»‘ chuá»—i ngÃ y á»Ÿ Ä‘áº§u trang vÃ  trong bá»™ nhá»› khi server tráº£ vá» thÃ´ng tin streak
+function showStreak(s) {
+  if (!s || typeof s.currentStreak !== 'number') return;
+  const u = Auth.user();
+  if (u) {
+    u.currentStreak = s.currentStreak;
+    u.longestStreak = s.longestStreak;
+    Auth.setUser(u);
+  }
+  const el = $('#streak-count');
+  if (el) el.textContent = s.currentStreak;
+  if (s.alreadyPinged === false) toast(`Chuá»—i ngÃ y há»c: ${s.currentStreak} ngÃ y liÃªn tiáº¿p`);
+}
+
+// PhÃ¡t Ã¢m: dÃ¹ng audio Cambridge khi cháº¡y backend tháº­t, khÃ´ng cÃ³ thÃ¬ Ä‘á»c báº±ng giá»ng trÃ¬nh duyá»‡t
+function speak(word, url) {
+  const fallback = () => {
+    if (!('speechSynthesis' in window)) return;
+    const u = new SpeechSynthesisUtterance(word);
+    u.lang = 'en-US';
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+  };
+  if (!url || !isLive()) return fallback();
+  new Audio(url).play().catch(fallback);
+}
+const SPK = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M3 9v6h4l5 4V5L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>';
+const speakBtn = (word, audio) =>
+  `<button class="icon" data-act="speak" data-word="${esc(word)}" data-audio="${esc(audio || '')}" aria-label="Nghe phÃ¡t Ã¢m tá»« ${esc(word)}">${SPK}</button>`;
+actions.speak = (el) => speak(el.dataset.word, el.dataset.audio);
+
+
+
+
+=== FILE: index-b.html ===
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="refresh" content="0; url=index.html">
+  <title>ÄÃ£ chuyá»ƒn sang index.html</title>
+</head>
+<body>
+  <p>Giao diá»‡n báº£ng Ä‘en Ä‘Ã£ bá». Má»Ÿ <a href="index.html">index.html</a>. File nÃ y cÃ³ thá»ƒ xoÃ¡.</p>
+</body>
+</html>
+
+
+
+
+=== FILE: index.html ===
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vá»Ÿ tiáº¿ng Anh: Ä‘á»c hiá»ƒu, tá»« vá»±ng vÃ  chuá»—i ngÃ y há»c</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Lora:wght@600;700&display=swap">
+  <link rel="stylesheet" href="styles.css?v=8">
+</head>
+<body>
+  <header class="top">
+    <h1>Vá»Ÿ tiáº¿ng Anh</h1>
+    <div class="user">
+      <span class="streak" title="Sá»‘ ngÃ y há»c liÃªn tiáº¿p">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2c.5 3.2-1.3 4.9-3 6.7C7.3 10.5 6 12.2 6 14.8A6 6 0 0 0 12 21a6 6 0 0 0 6-6.2c0-2-.9-3.6-2-4.8-.3 1.2-1 2-1.9 2.4.5-3.7-.6-7.6-2.1-10.4z"/></svg>
+        <b id="streak-count">0</b><span class="sr"> ngÃ y há»c liÃªn tiáº¿p</span>
+      </span>
+      <span id="user-name"></span>
+      <span class="badge" id="user-role" hidden>Quáº£n trá»‹</span>
+      <button class="link" data-act="logout">ÄÄƒng xuáº¥t</button>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Chá»©c nÄƒng">
+    <button role="tab" data-act="tab" data-tab="reading">Äá»c hiá»ƒu</button>
+    <button role="tab" data-act="tab" data-tab="vocab">Tá»« vá»±ng</button>
+    <button role="tab" data-act="tab" data-tab="quiz">LÃ m quiz</button>
+    <button role="tab" data-act="tab" data-tab="streak">Chuá»—i ngÃ y</button>
+  </nav>
+
+  <main id="view" role="tabpanel" tabindex="-1"></main>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script src="mock-data.js"></script>
+  <script src="mock-api.js"></script>
+  <script src="mock-auth.js"></script>
+  <script src="mock-content.js"></script>
+  <script src="core.js"></script>
+  <script src="reading.js"></script>
+  <script src="vocab.js"></script>
+  <script src="quiz.js"></script>
+  <script src="streak.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
+
+
+
+
+=== FILE: login.css ===
+:root{--paper:#fdfdfb;--rule:#dbe5f5;--ink:#17233f;--ink-deep:#0b1426;--pencil:#66718c;--red:#d3473f;--blue:#2d5bd1;color-scheme:light;
+  --sans:"Be Vietnam Pro","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+  --serif:"Lora",Cambria,"Palatino Linotype",Georgia,serif}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;color:var(--ink);background:var(--paper);font:15.5px/1.6 var(--sans);
+  background:repeating-linear-gradient(to bottom,transparent 0 31px,var(--rule) 31px 32px) 0 8px}
+h1{margin:0 0 8px;font-family:var(--serif);font-weight:700;font-size:38px;line-height:1.2;text-align:center}
+p{margin:0}
+.lead{margin-bottom:24px;text-align:center;color:var(--pencil)}
+.container{width:100%;max-width:440px}
+.card{padding:36px 30px;background:rgba(253,253,251,.96);border:2px solid var(--ink);border-radius:16px;box-shadow:0 6px 0 var(--ink)}
+
+button,input,select{font:inherit;color:inherit}
+input,select{width:100%;min-height:44px;padding:0 14px;background:var(--paper);border:2px solid var(--ink);border-radius:10px}
+input:focus-visible,select:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+/* NÃºt chÃ­nh in ná»•i nhÆ° trÃªn trang vá»Ÿ, nháº¥n xuá»‘ng thÃ¬ lÃºn */
+.btn{display:inline-flex;align-items:center;justify-content:center;width:100%;min-height:46px;padding:0 22px;font-weight:600;font-size:16px;letter-spacing:.01em;
+  color:#fff;background:var(--ink);border:2px solid var(--ink);border-radius:12px;box-shadow:0 4px 0 var(--ink-deep);cursor:pointer;
+  transition:transform .12s,box-shadow .12s,background-color .12s}
+.btn:hover{background:#243459;transform:translateY(-1px);box-shadow:0 5px 0 var(--ink-deep)}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink-deep)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none;background:var(--pencil);border-color:var(--pencil);box-shadow:0 4px 0 var(--pencil)}
+.link{padding:2px 8px;font-weight:600;color:var(--blue);background:none;border:0;border-radius:6px;cursor:pointer;transition:background-color .12s}
+.link:hover{background:rgba(45,91,209,.1)}
+:focus-visible{outline:3px solid var(--blue);outline-offset:3px}
+
+.stack{display:grid;gap:14px}
+.stack label{display:grid;gap:6px;font-size:14px;font-weight:600}
+.btn{margin-top:6px}
+.foot{margin-top:20px;text-align:center;font-size:14px}
+.hint{margin-top:14px;font-size:13px;color:var(--pencil)}
+.note{font-size:14px;line-height:1.6}
+.ts{display:flex;justify-content:center;min-height:65px}
+input.otp{text-align:center;font:700 28px/1 var(--serif);letter-spacing:.45em;padding-left:.45em}
+.link:disabled{color:var(--pencil);cursor:default}
+.link:disabled:hover{background:none}
+code{padding:1px 6px;font:13px Consolas,monospace;background:#eef2fb;border-radius:4px}
+.src{margin-top:24px;padding-top:14px;border-top:1px dashed var(--pencil);font-size:14px}
+.src summary{cursor:pointer;font-weight:600}
+.src label{display:grid;gap:6px;margin-top:12px;font-weight:600}
+
+#toast{position:fixed;right:24px;bottom:24px;max-width:360px;padding:10px 18px;color:#fff;background:var(--ink);border-radius:10px;
+  opacity:0;transform:translateY(8px);transition:.2s;pointer-events:none}
+#toast.show{opacity:1;transform:none}
+#toast.err{background:var(--red)}
+@media (prefers-reduced-motion:reduce){#toast,.btn,.link{transition:none}.btn:hover,.btn:active{transform:none}}
+
+
+
+
+=== FILE: login.html ===
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ÄÄƒng nháº­p - Vá»Ÿ tiáº¿ng Anh</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Lora:wght@600;700&display=swap">
+  <link rel="stylesheet" href="login.css">
+</head>
+<body>
+  <main class="container">
+    <div class="card">
+      <h1>Vá»Ÿ tiáº¿ng Anh</h1>
+      <p class="lead" id="lead">ÄÄƒng nháº­p Ä‘á»ƒ tiáº¿p tá»¥c há»c</p>
+      <div id="view"></div>
+    </div>
+  </main>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script src="mock-data.js"></script>
+  <script src="mock-api.js"></script>
+  <script src="mock-auth.js"></script>
+  <script src="mock-content.js"></script>
+  <script src="login.js"></script>
+</body>
+</html>
+
+
+
+
+=== FILE: login.js ===
+'use strict';
+const $ = (s) => document.querySelector(s);
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+let view = 'login'; // 'login' | 'register' | 'otp'
+const served = /^https?:$/.test(location.protocol); // má»Ÿ qua Express thÃ¬ cÃ³ backend tháº­t cÃ¹ng nguá»“n
+
+// Cáº¥u hÃ¬nh báº­t/táº¯t do server quyáº¿t Ä‘á»‹nh (GET /api/auth/config). Dá»¯ liá»‡u máº«u thÃ¬ luÃ´n táº¯t.
+const OFF = { otpEnabled: false, turnstileEnabled: false, turnstileSiteKey: '', otpTtlMinutes: 10, otpResendSeconds: 60 };
+let cfg = { ...OFF };
+let pending = null; // { email, expiresInMinutes } khi Ä‘ang chá» nháº­p mÃ£ OTP
+let tsId = null;    // id widget Turnstile Ä‘ang hiá»ƒn thá»‹
+let tsToken = '';   // token Turnstile hiá»‡n táº¡i (dÃ¹ng Ä‘Æ°á»£c má»™t láº§n)
+let timer = null;   // bá»™ Ä‘áº¿m ngÆ°á»£c nÃºt "Gá»­i láº¡i mÃ£"
+
+let _t;
+function toast(msg, bad) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.toggle('err', !!bad);
+  el.classList.add('show');
+  clearTimeout(_t);
+  _t = setTimeout(() => el.classList.remove('show'), 4500);
+}
+
+// Má»Ÿ qua web hoáº·c server thÃ¬ dÃ¹ng backend cÃ¹ng Ä‘á»‹a chá»‰; má»Ÿ file trá»±c tiáº¿p thÃ¬ dÃ¹ng dá»¯ liá»‡u máº«u trong trÃ¬nh duyá»‡t
+const mode = () => (served ? 'live' : 'mock');
+const base = () => (served ? location.origin : '');
+
+// Gá»i auth á»Ÿ nguá»“n Ä‘ang chá»n (dá»¯ liá»‡u máº«u hoáº·c backend tháº­t)
+async function authApi(method, path, body) {
+  let status, data;
+  if (mode() === 'live') {
+    try {
+      const res = await fetch(base() + '/api' + path, {
+        method,
+        headers: body ? { 'Content-Type': 'application/json' } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      status = res.status;
+      data = await res.json().catch(() => null);
+    } catch (e) {
+      throw new Error('KhÃ´ng káº¿t ná»‘i Ä‘Æ°á»£c backend. Kiá»ƒm tra server Ä‘ang cháº¡y vÃ  Ä‘á»‹a chá»‰ á»Ÿ má»¥c Nguá»“n dá»¯ liá»‡u.');
+    }
+  } else {
+    ({ status, data } = mockApi(method, path, body, null));
+  }
+  if (status >= 400) throw new Error((data && data.error) || 'Lá»—i ' + status);
+  return { status, data };
+}
+
+async function loadConfig() {
+  cfg = { ...OFF };
+  if (mode() === 'live') {
+    try {
+      cfg = { ...OFF, ...(await authApi('GET', '/auth/config')).data };
+    } catch (e) {
+      toast(e.message, true);
+    }
+  }
+}
+
+// ---- Turnstile ----
+let tsScript;
+function loadTurnstile() {
+  if (window.turnstile) return Promise.resolve();
+  if (!tsScript) {
+    tsScript = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+      s.async = true;
+      s.onload = resolve;
+      s.onerror = () => { tsScript = null; reject(new Error('KhÃ´ng táº£i Ä‘Æ°á»£c khung xÃ¡c minh Turnstile. Kiá»ƒm tra káº¿t ná»‘i máº¡ng.')); };
+      document.head.appendChild(s);
+    });
+  }
+  return tsScript;
+}
+function dropTurnstile() {
+  if (tsId !== null && window.turnstile) { try { window.turnstile.remove(tsId); } catch (e) { /* Ä‘Ã£ gá»¡ */ } }
+  tsId = null;
+  tsToken = '';
+}
+function showTurnstile() {
+  const box = $('#ts');
+  if (!box) return;
+  loadTurnstile().then(() => {
+    if (!box.isConnected) return; // ngÆ°á»i dÃ¹ng Ä‘Ã£ chuyá»ƒn mÃ n hÃ¬nh
+    tsId = window.turnstile.render(box, {
+      sitekey: cfg.turnstileSiteKey,
+      callback: (token) => { tsToken = token; },
+      'expired-callback': () => { tsToken = ''; },
+      'error-callback': () => { tsToken = ''; },
+    });
+  }).catch((e) => toast(e.message, true));
+}
+const resetTurnstile = () => { tsToken = ''; if (tsId !== null && window.turnstile) window.turnstile.reset(tsId); };
+
+// ---- Giao diá»‡n ----
+function startCountdown(seconds) {
+  clearInterval(timer);
+  let left = seconds;
+  const tick = () => {
+    const b = $('#resend');
+    if (!b) { clearInterval(timer); return; }
+    b.disabled = left > 0;
+    b.textContent = left > 0 ? `Gá»­i láº¡i mÃ£ sau ${left} giÃ¢y` : 'Gá»­i láº¡i mÃ£';
+    left -= 1;
+    if (left < -1) clearInterval(timer);
+  };
+  tick();
+  timer = setInterval(tick, 1000);
+}
+
+function paint() {
+  clearInterval(timer);
+  dropTurnstile();
+  const lead = $('#lead');
+
+  if (view === 'otp') {
+    lead.textContent = 'XÃ¡c thá»±c email';
+    $('#view').innerHTML = `<form class="stack" id="form" novalidate>
+        <p class="note">MÃ£ gá»“m 6 chá»¯ sá»‘ Ä‘Ã£ Ä‘Æ°á»£c gá»­i tá»›i <b>${esc(pending.email)}</b>. MÃ£ cÃ³ hiá»‡u lá»±c trong ${esc(pending.expiresInMinutes)} phÃºt. Náº¿u khÃ´ng tháº¥y, hÃ£y xem cáº£ thÆ° rÃ¡c.</p>
+        <label for="code">MÃ£ xÃ¡c thá»±c</label>
+        <input id="code" class="otp" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢" required>
+        <button class="btn" type="submit">XÃ¡c nháº­n</button>
+      </form>
+      <p class="foot"><button class="link" id="resend" type="button"></button>
+      <button class="link" id="back" type="button">Äá»•i email</button></p>`;
+    $('#code').focus();
+    startCountdown(cfg.otpResendSeconds);
+    return;
+  }
+
+  const login = view === 'login';
+  lead.textContent = login ? 'ÄÄƒng nháº­p Ä‘á»ƒ tiáº¿p tá»¥c há»c' : 'Táº¡o tÃ i khoáº£n Ä‘á»ƒ lÆ°u Ä‘iá»ƒm vÃ  chuá»—i ngÃ y há»c';
+  const demo = mode() === 'mock' && login
+    ? `<p class="hint">TÃ i khoáº£n demo: <code>${DEMO_ACCOUNT.email}</code> / <code>${DEMO_ACCOUNT.password}</code>
+        <button type="button" class="link" id="fill-demo">Äiá»n sáºµn</button></p>` : '';
+  const captcha = !login && cfg.turnstileEnabled ? '<div id="ts" class="ts" aria-label="XÃ¡c minh khÃ´ng pháº£i ngÆ°á»i mÃ¡y"></div>' : '';
+  $('#view').innerHTML = `<form class="stack" id="form" novalidate>
+      ${login ? '' : '<label>Biá»‡t danh<input name="nickname" autocomplete="nickname" required maxlength="50"></label>'}
+      <label>Email<input name="email" type="email" autocomplete="email" required></label>
+      <label>Máº­t kháº©u<input name="password" type="password" autocomplete="${login ? 'current-password' : 'new-password'}" required${login ? '' : ' minlength="6" maxlength="72"'}></label>
+      ${captcha}
+      <button class="btn" type="submit">${login ? 'ÄÄƒng nháº­p' : 'ÄÄƒng kÃ½'}</button>
+    </form>${demo}
+    <p class="foot">${login ? 'ChÆ°a cÃ³ tÃ i khoáº£n?' : 'ÄÃ£ cÃ³ tÃ i khoáº£n?'}
+      <button class="link" id="switch" type="button">${login ? 'ÄÄƒng kÃ½' : 'ÄÄƒng nháº­p'}</button></p>`;
+  const first = $('#form input');
+  if (first) first.focus();
+  if (captcha) showTurnstile();
+}
+
+function finish(r) {
+  localStorage.setItem('token', r.token);
+  localStorage.setItem('user', JSON.stringify(r.user));
+  localStorage.setItem('authMode', mode());
+  localStorage.setItem('authBase', mode() === 'live' ? base() : '');
+  location.href = 'index.html';
+}
+
+document.addEventListener('click', async (e) => {
+  const id = e.target.id;
+  if (id === 'switch') {
+    view = view === 'login' ? 'register' : 'login';
+    paint();
+  } else if (id === 'fill-demo') {
+    $('#form [name=email]').value = DEMO_ACCOUNT.email;
+    $('#form [name=password]').value = DEMO_ACCOUNT.password;
+  } else if (id === 'back') {
+    pending = null;
+    view = 'register';
+    paint();
+  } else if (id === 'resend') {
+    const b = e.target;
+    b.disabled = true;
+    try {
+      const r = (await authApi('POST', '/auth/resend-otp', { email: pending.email })).data;
+      pending.expiresInMinutes = r.expiresInMinutes;
+      toast('ÄÃ£ gá»­i láº¡i mÃ£, hÃ£y kiá»ƒm tra email');
+      startCountdown(r.resendSeconds || cfg.otpResendSeconds);
+    } catch (err) {
+      toast(err.message, true);
+      startCountdown(5);
+    }
+  }
+});
+
+document.addEventListener('submit', async (e) => {
+  if (e.target.id !== 'form') return;
+  e.preventDefault();
+  const d = Object.fromEntries(new FormData(e.target));
+  const btn = e.target.querySelector('button[type=submit]');
+
+  if (view === 'otp') {
+    if (!/^\d{6}$/.test(String(d.code || '').trim())) { toast('MÃ£ gá»“m Ä‘Ãºng 6 chá»¯ sá»‘', true); return; }
+    btn.disabled = true;
+    try {
+      finish((await authApi('POST', '/auth/verify-otp', { email: pending.email, code: d.code.trim() })).data);
+    } catch (err) {
+      toast(err.message, true);
+      btn.disabled = false;
+    }
+    return;
+  }
+
+  if (!String(d.email || '').trim() || !String(d.password || '')) {
+    toast('HÃ£y nháº­p email vÃ  máº­t kháº©u', true);
+    return;
+  }
+  const register = view === 'register';
+  if (register && cfg.turnstileEnabled && !tsToken) {
+    toast('HÃ£y hoÃ n thÃ nh bÆ°á»›c xÃ¡c minh "TÃ´i khÃ´ng pháº£i ngÆ°á»i mÃ¡y"', true);
+    return;
+  }
+  btn.disabled = true;
+  try {
+    const body = register && cfg.turnstileEnabled ? { ...d, turnstileToken: tsToken } : d;
+    const { status, data } = await authApi('POST', register ? '/auth/register' : '/auth/login', body);
+    if (register && status === 202 && data.otpRequired) {
+      pending = { email: data.email, expiresInMinutes: data.expiresInMinutes };
+      cfg.otpResendSeconds = data.resendSeconds || cfg.otpResendSeconds;
+      view = 'otp';
+      paint();
+      toast('ÄÃ£ gá»­i mÃ£ xÃ¡c thá»±c tá»›i email cá»§a báº¡n');
+      return;
+    }
+    finish(data);
+  } catch (err) {
+    toast(err.message, true);
+    if (register && cfg.turnstileEnabled) resetTurnstile(); // token chá»‰ dÃ¹ng Ä‘Æ°á»£c má»™t láº§n
+    btn.disabled = false;
+  }
+});
+
+// ÄÃ£ Ä‘Äƒng nháº­p thÃ¬ vÃ o tháº³ng app
+if (localStorage.getItem('token') && localStorage.getItem('user')) {
+  location.href = 'index.html';
+} else {
+  loadConfig().then(paint);
+}
+
+
+
+
+=== FILE: mock-api.js ===
+'use strict';
+// Backend giáº£ cháº¡y trong trÃ¬nh duyá»‡t: cÃ¹ng Ä‘Æ°á»ng dáº«n, cÃ¹ng hÃ¬nh dáº¡ng JSON, cÃ¹ng mÃ£ lá»—i vá»›i backend tháº­t.
+// Má»—i file mock-*.js Ä‘Äƒng kÃ½ má»™t handler vÃ o MOCK_HANDLERS. Handler tráº£ { status, data },
+// hoáº·c tráº£ undefined náº¿u request khÃ´ng thuá»™c vá» nÃ³.
+let _n = 100;
+const uid = () => 'm' + ++_n;
+const MOCK = { ...buildSeed(), quiz: {}, sessions: {}, users: [] };
+const MOCK_HANDLERS = [];
+
+// NgÃ y theo giá» Viá»‡t Nam (YYYY-MM-DD), giá»‘ng utils/date.js cá»§a backend
+const _vnFmt = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
+});
+const vnDate = (d = new Date()) => _vnFmt.format(d);
+const vnYesterday = () => vnDate(new Date(Date.now() - 86400000));
+
+const audioOf = (w) => {
+  const s = w.trim().toLowerCase().replace(/\s+/g, '_');
+  if (!/^[a-z_-]+$/.test(s)) return null;
+  return `https://dictionary.cambridge.org/vi/media/english-chinese-simplified/us_pron/${s[0]}/${s.slice(0, 3).padEnd(3, '_')}/${s}/${s}.mp3`;
+};
+const norm = (x) => x.trim().toLowerCase().replace(/\s+/g, ' ');
+const shuffle = (a) => {
+  a = [...a];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
+
+function mockApi(method, path, body, token) {
+  const [p, qs] = path.split('?');
+  const c = {
+    method,
+    key: method + ' ' + p,
+    q: new URLSearchParams(qs || ''),
+    body: body || {},
+    user: mockUserFromToken(token), // Ä‘á»‹nh nghÄ©a trong mock-auth.js
+    m: null,
+    ok: (data, status = 200) => ({ status, data }),
+    err: (status, error) => ({ status, data: { error } }),
+    str: (v) => (typeof v === 'string' ? v.trim() : ''),
+  };
+  c.need = (v, f) => (c.str(v) ? null : c.err(400, f + ' lÃ  báº¯t buá»™c'));
+  c.is = (re) => (c.m = c.key.match(re));
+  // Giá»‘ng middleware adminRequired: 401 náº¿u chÆ°a Ä‘Äƒng nháº­p, 403 náº¿u khÃ´ng pháº£i quáº£n trá»‹ viÃªn
+  c.admin = () => {
+    if (!c.user) return c.err(401, 'ChÆ°a Ä‘Äƒng nháº­p');
+    if (c.user.role !== 'admin') return c.err(403, 'Chá»‰ quáº£n trá»‹ viÃªn Ä‘Æ°á»£c thá»±c hiá»‡n thao tÃ¡c nÃ y');
+    return null;
+  };
+  c.auth = () => (c.user ? null : c.err(401, 'ChÆ°a Ä‘Äƒng nháº­p'));
+  for (const h of MOCK_HANDLERS) {
+    const r = h(c);
+    if (r) return r;
+  }
+  return c.err(404, 'Route khÃ´ng tá»“n táº¡i');
+}
+
+
+
+
+=== FILE: mock-auth.js ===
+'use strict';
+// ÄÄƒng nháº­p vÃ  streak giáº£. NgÆ°á»i dÃ¹ng giáº£ lÆ°u trong localStorage (khÃ³a mockUsers) Ä‘á»ƒ cÃ²n nguyÃªn
+// khi chuyá»ƒn giá»¯a login.html vÃ  index.html. Chá»‰ dÃ¹ng Ä‘á»ƒ demo: máº­t kháº©u bÄƒm kiá»ƒu Ä‘Æ¡n giáº£n, KHÃ”NG an toÃ n.
+const DEMO_ACCOUNT = { email: 'demo@example.com', password: 'demo123' };
+
+function mockHash(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return 'h' + h.toString(36);
+}
+const dayOffset = (n) => vnDate(new Date(Date.now() - n * 86400000));
+
+function seedDemoUser() {
+  // QuÃ¡ khá»© cÃ³ sáºµn: chuá»—i dÃ i 14 ngÃ y, nghá»‰ 2 ngÃ y, rá»“i chuá»—i hiá»‡n táº¡i 9 ngÃ y (Ä‘áº¿n hÃ´m qua)
+  const days = [];
+  for (let i = 25; i >= 12; i--) days.push(dayOffset(i));
+  for (let i = 9; i >= 1; i--) days.push(dayOffset(i));
+  return {
+    _id: 'u1', nickname: 'Há»c viÃªn demo', email: DEMO_ACCOUNT.email, pass: mockHash(DEMO_ACCOUNT.password),
+    role: 'admin', timeActive: 0, lastActiveDate: dayOffset(1), currentStreak: 9, longestStreak: 14, activeDays: days,
+  };
+}
+function loadUsers() {
+  try {
+    const raw = localStorage.getItem('mockUsers');
+    if (raw) return JSON.parse(raw);
+  } catch (e) { /* dá»¯ liá»‡u há»ng thÃ¬ táº¡o láº¡i */ }
+  const users = [seedDemoUser()];
+  localStorage.setItem('mockUsers', JSON.stringify(users));
+  return users;
+}
+const saveUsers = (users) => localStorage.setItem('mockUsers', JSON.stringify(users));
+
+function mockUserFromToken(token) {
+  if (!token || !token.startsWith('mock.')) return null;
+  return loadUsers().find((u) => u._id === token.slice(5)) || null;
+}
+
+// Giá»‘ng utils/streak.js: chuá»—i chá»‰ cÃ²n hiá»‡u lá»±c náº¿u láº§n há»c gáº§n nháº¥t lÃ  hÃ´m nay hoáº·c hÃ´m qua
+function mockEffective(u) {
+  const alive = u.lastActiveDate === vnDate() || u.lastActiveDate === vnYesterday();
+  return { currentStreak: alive ? u.currentStreak : 0, longestStreak: u.longestStreak };
+}
+function mockTouch(userId) {
+  const users = loadUsers();
+  const u = users.find((x) => x._id === userId);
+  if (!u) return null;
+  const today = vnDate();
+  if (u.lastActiveDate === today) return { ...mockEffective(u), alreadyPinged: true };
+  u.currentStreak = u.lastActiveDate === vnYesterday() ? u.currentStreak + 1 : 1;
+  u.longestStreak = Math.max(u.longestStreak, u.currentStreak);
+  u.lastActiveDate = today;
+  u.activeDays = [...u.activeDays, today].slice(-400);
+  saveUsers(users);
+  return { currentStreak: u.currentStreak, longestStreak: u.longestStreak, alreadyPinged: false };
+}
+const mockPublicUser = (u) => ({ id: u._id, nickname: u.nickname, email: u.email, role: u.role, ...mockEffective(u) });
+
+MOCK_HANDLERS.push((c) => {
+  // Dá»¯ liá»‡u máº«u khÃ´ng gá»­i email tháº­t vÃ  khÃ´ng cÃ³ server kiá»ƒm tra captcha nÃªn luÃ´n táº¯t cáº£ hai
+  if (c.key === 'GET /auth/config') {
+    return c.ok({ otpEnabled: false, turnstileEnabled: false, turnstileSiteKey: '', otpTtlMinutes: 10, otpResendSeconds: 60 });
+  }
+  if (c.key === 'POST /auth/register') {
+    const nickname = c.str(c.body.nickname);
+    const email = c.str(c.body.email).toLowerCase();
+    const password = typeof c.body.password === 'string' ? c.body.password.trim() : '';
+    const e = c.need(nickname, 'nickname') || c.need(email, 'email') || c.need(password, 'password');
+    if (e) return e;
+    if (password.length < 6) return c.err(400, 'Máº­t kháº©u pháº£i cÃ³ Ã­t nháº¥t 6 kÃ½ tá»±');
+    if (new TextEncoder().encode(password).length > 72) return c.err(400, 'Máº­t kháº©u tá»‘i Ä‘a 72 kÃ½ tá»±');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return c.err(400, 'Email khÃ´ng há»£p lá»‡');
+    const users = loadUsers();
+    if (users.some((u) => u.email === email)) return c.err(409, 'Email Ä‘Ã£ Ä‘Æ°á»£c Ä‘Äƒng kÃ½');
+    const u = {
+      _id: 'u' + (Date.now().toString(36)), nickname: nickname.slice(0, 50), email, pass: mockHash(password),
+      role: users.length === 0 ? 'admin' : 'user', timeActive: 0,
+      lastActiveDate: null, currentStreak: 0, longestStreak: 0, activeDays: [],
+    };
+    users.push(u);
+    saveUsers(users);
+    return c.ok({ token: 'mock.' + u._id, user: mockPublicUser(u) }, 201);
+  }
+  if (c.key === 'POST /auth/login') {
+    const email = c.str(c.body.email).toLowerCase();
+    const password = typeof c.body.password === 'string' ? c.body.password.trim() : '';
+    const e = c.need(email, 'email') || c.need(password, 'password');
+    if (e) return e;
+    const u = loadUsers().find((x) => x.email === email);
+    if (!u || u.pass !== mockHash(password)) return c.err(401, 'Email hoáº·c máº­t kháº©u khÃ´ng Ä‘Ãºng');
+    return c.ok({ token: 'mock.' + u._id, user: mockPublicUser(u) });
+  }
+  if (c.key === 'GET /auth/me') {
+    const e = c.auth(); if (e) return e;
+    return c.ok({ ...mockPublicUser(c.user), timeActive: c.user.timeActive });
+  }
+  if (c.key === 'GET /streak') {
+    const e = c.auth(); if (e) return e;
+    const u = c.user;
+    return c.ok({
+      today: vnDate(), ...mockEffective(u), lastActiveDate: u.lastActiveDate,
+      todayDone: u.lastActiveDate === vnDate(), activeDays: u.activeDays,
+    });
+  }
+  if (c.key === 'POST /streak/ping') {
+    const e = c.auth(); if (e) return e;
+    return c.ok(mockTouch(c.user._id));
+  }
+  return undefined;
+});
+
+
+
+
+=== FILE: mock-content.js ===
+'use strict';
+// Ná»™i dung há»c giáº£: reading, tá»« vá»±ng, quiz. CÃ¹ng Ä‘Æ°á»ng dáº«n, cÃ¹ng quyá»n (quáº£n trá»‹ má»›i Ä‘Æ°á»£c thÃªm, sá»­a, xoÃ¡) vá»›i backend tháº­t.
+MOCK_HANDLERS.push((c) => {
+  const vtopic = (id) => MOCK.vt.find((t) => t._id === id);
+  const { key, q, body } = c;
+  let e;
+
+  // ---- Reading ----
+  if (key === 'GET /reading/topics') return c.ok(MOCK.rt);
+  if (key === 'POST /reading/topics') {
+    if ((e = c.admin())) return e;
+    if ((e = c.need(body.name, 'name'))) return e;
+    if (MOCK.rt.some((t) => t.name === c.str(body.name))) return c.err(409, 'Dá»¯ liá»‡u Ä‘Ã£ tá»“n táº¡i');
+    const t = { _id: uid(), name: c.str(body.name) };
+    MOCK.rt.push(t);
+    return c.ok(t, 201);
+  }
+  if (c.is(/^(PUT|DELETE) \/reading\/topics\/([\w-]+)$/)) {
+    if ((e = c.admin())) return e;
+    const t = MOCK.rt.find((x) => x._id === c.m[2]);
+    if (!t) return c.err(404, 'KhÃ´ng tÃ¬m tháº¥y topic reading');
+    if (c.m[1] === 'PUT') {
+      if ((e = c.need(body.name, 'name'))) return e;
+      t.name = c.str(body.name);
+      return c.ok(t);
+    }
+    MOCK.reads.filter((r) => r.topic === t._id).forEach((r) => delete MOCK.quiz[r._id]);
+    MOCK.reads = MOCK.reads.filter((r) => r.topic !== t._id);
+    MOCK.rt = MOCK.rt.filter((x) => x !== t);
+    return { status: 204, data: null };
+  }
+  if (key === 'GET /reading') {
+    const t = q.get('topic');
+    return c.ok(MOCK.reads.filter((r) => !t || r.topic === t).sort((a, b) => b.createdAt - a.createdAt).map(({ content, ...r }) => r));
+  }
+  if (key === 'POST /reading') {
+    if ((e = c.admin())) return e;
+    if ((e = c.need(body.title, 'title') || c.need(body.content, 'content'))) return e;
+    if (!MOCK.rt.some((t) => t._id === body.topic)) return c.err(404, 'KhÃ´ng tÃ¬m tháº¥y topic reading');
+    const r = { _id: uid(), topic: body.topic, title: c.str(body.title), content: c.str(body.content), createdAt: Date.now() };
+    MOCK.reads.push(r);
+    return c.ok(r, 201);
+  }
+  if (c.is(/^(GET|PUT|DELETE) \/reading\/([\w-]+)$/)) {
+    const method = c.m[1];
+    if (method !== 'GET' && (e = c.admin())) return e;
+    const r = MOCK.reads.find((x) => x._id === c.m[2]);
+    if (!r) return c.err(404, 'KhÃ´ng tÃ¬m tháº¥y bÃ i Ä‘á»c');
+    if (method === 'DELETE') {
+      MOCK.reads = MOCK.reads.filter((x) => x !== r);
+      delete MOCK.quiz[r._id];
+      return { status: 204, data: null };
+    }
+    if (method === 'PUT') {
+      const upd = {};
+      for (const f of ['title', 'content']) {
+        if (body[f] === undefined) continue;
+        if ((e = c.need(body[f], f))) return e;
+        upd[f] = c.str(body[f]);
+      }
+      if (body.topic !== undefined) {
+        if (!MOCK.rt.some((t) => t._id === body.topic)) return c.err(404, 'KhÃ´ng tÃ¬m tháº¥y topic reading');
+        upd.topic = body.topic;
+        if (MOCK.quiz[r._id]) MOCK.quiz[r._id].topic = body.topic;
+      }
+      if (!Object.keys(upd).length) return c.err(400, 'KhÃ´ng cÃ³ dá»¯ liá»‡u Ä‘á»ƒ cáº­p nháº­t');
+      Object.assign(r, upd);
+      return c.ok(r);
+    }
+    const z = MOCK.quiz[r._id] || (MOCK.quiz[r._id] = { _id: uid(), type: 'reading', topic: r.topic, reading: r._id, views: 0 });
+    z.views += 1; // giá»‘ng upsert $inc á»Ÿ backend tháº­t
+    z.topic = r.topic;
+    const streak = c.user ? mockTouch(c.user._id) : null;
+    return c.ok({ reading: r, topic: MOCK.rt.find((t) => t._id === r.topic) || null, quiz: { ...z }, streak });
+  }
+
+  // ---- Tá»« vá»±ng: topic ----
+  if (key === 'GET /vocabulary/topics') {
+    return c.ok(MOCK.vt.map((t) => ({ ...t, wordCount: MOCK.words.filter((w) => w.topic === t._id).length })));
+  }
+  if (key === 'POST /vocabulary/topics') {
+    if ((e = c.admin())) return e;
+    if ((e = c.need(body.name, 'name'))) return e;
+    if (MOCK.vt.some((t) => t.name === c.str(body.name))) return c.err(409, 'Dá»¯ liá»‡u Ä‘Ã£ tá»“n táº¡i');
+    const t = { _id: uid(), name: c.str(body.name) };
+    MOCK.vt.push(t);
+    return c.ok(t, 201);
+  }
+  if (c.is(/^(GET|PUT|DELETE) \/vocabulary\/topics\/([\w-]+)$/)) {
+    const method = c.m[1];
+    if (method !== 'GET' && (e = c.admin())) return e;
+    const t = vtopic(c.m[2]);
+    if (!t) return c.err(404, 'KhÃ´ng tÃ¬m tháº¥y topic tá»« vá»±ng');
+    if (method === 'GET') {
+      const words = MOCK.words.filter((w) => w.topic === t._id).sort((a, b) => a.word.localeCompare(b.word));
+      return c.ok({ ...t, words: words.map((w) => ({ ...w, audio: audioOf(w.word) })) });
+    }
+    if (method === 'PUT') {
+      if ((e = c.need(body.name, 'name'))) return e;
+      t.name = c.str(body.name);
+      return c.ok(t);
+    }
+    MOCK.words = MOCK.words.filter((w) => w.topic !== t._id);
+    MOCK.vt = MOCK.vt.filter((x) => x !== t);
+    return { status: 204, data: null };
+  }
+
+  // ---- Tá»« vá»±ng: tá»« ----
+  if (c.is(/^POST \/vocabulary\/topics\/([\w-]+)\/words$/)) {
+    if ((e = c.admin())) return e;
+    if (!vtopic(c.m[1])) return c.err(404, 'KhÃ´ng tÃ¬m tháº¥y topic tá»« vá»±ng');
+    if ((e = c.need(body.word, 'word') || c.need(body.meaning, 'meaning'))) return e;
+    if (MOCK.words.some((w) => w.topic === c.m[1] && w.word === c.str(body.word))) return c.err(409, 'Dá»¯ liá»‡u Ä‘Ã£ tá»“n táº¡i');
+    const w = { _id: uid(), topic: c.m[1], word: c.str(body.word), meaning: c.str(body.meaning) };
+    MOCK.words.push(w);
+    return c.ok({ ...w, audio: audioOf(w.word) }, 201);
+  }
+  if (c.is(/^(PUT|DELETE) \/vocabulary\/topics\/([\w-]+)\/words\/([\w-]+)$/)) {
+    if ((e = c.admin())) return e;
+    const w = MOCK.words.find((x) => x._id === c.m[3] && x.topic === c.m[2]);
+    if (!w) return c.err(404, 'KhÃ´ng tÃ¬m tháº¥y tá»« vá»±ng');
+    if (c.m[1] === 'DELETE') {
+      MOCK.words = MOCK.words.filter((x) => x !== w);
+      return { status: 204, data: null };
+    }
+    for (const f of ['word', 'meaning']) {
+      if (body[f] === undefined) continue;
+      if ((e = c.need(body[f], f))) return e;
+      w[f] = c.str(body[f]);
+    }
+    return c.ok({ ...w, audio: audioOf(w.word) });
+  }
+
+  // ---- Quiz tá»« vá»±ng ----
+  const finish = (s) => {
+    s.finished = true;
+    s.score = Math.round((s.correctCount / s.items.length) * 100);
+    s.streak = s.user ? mockTouch(s.user) : null;
+  };
+  const ownerErr = (s) => (s.user && (!c.user || s.user !== c.user._id)
+    ? c.err(403, 'PhiÃªn quiz nÃ y thuá»™c vá» tÃ i khoáº£n khÃ¡c') : null);
+
+  if (c.is(/^GET \/vocabulary\/topics\/([\w-]+)\/words$/)) {
+    const t = vtopic(c.m[1]);
+    if (!t) return c.err(404, 'KhÃ´ng tÃ¬m tháº¥y topic tá»« vá»±ng');
+    const ws = shuffle(MOCK.words.filter((w) => w.topic === t._id));
+    if (!ws.length) return c.err(404, 'Topic chÆ°a cÃ³ tá»« vá»±ng');
+    const s = {
+      _id: uid(), topic: t._id, user: c.user ? c.user._id : null,
+      items: ws.map((w) => ({ word: w._id, answered: false, correct: false })),
+      answeredCount: 0, correctCount: 0, finished: false, score: null, streak: null,
+    };
+    MOCK.sessions[s._id] = s;
+    // KhÃ´ng cÃ³ tá»« tiáº¿ng Anh vÃ  khÃ´ng cÃ³ audio, vÃ¬ audio chá»©a luÃ´n Ä‘Ã¡p Ã¡n
+    return c.ok({ sessionId: s._id, topic: { id: t._id, name: t.name }, total: ws.length,
+      words: Object.fromEntries(ws.map((w) => [w._id, w.meaning])) }, 201);
+  }
+  if (c.is(/^POST \/vocabulary\/quiz\/([\w-]+)\/check$/)) {
+    const s = MOCK.sessions[c.m[1]];
+    if (!s) return c.err(404, 'KhÃ´ng tÃ¬m tháº¥y phiÃªn quiz');
+    if ((e = ownerErr(s))) return e;
+    if (typeof body.answer !== 'string') return c.err(400, 'answer pháº£i lÃ  chuá»—i');
+    const it = s.items.find((i) => i.word === body.wordId);
+    const w = MOCK.words.find((x) => x._id === body.wordId);
+    if (!it) return c.err(404, 'Tá»« nÃ y khÃ´ng thuá»™c phiÃªn quiz');
+    if (!w) return c.err(404, 'Tá»« vá»±ng Ä‘Ã£ bá»‹ xoÃ¡');
+    if (s.finished) return c.err(409, 'PhiÃªn quiz Ä‘Ã£ káº¿t thÃºc');
+    if (it.answered) return c.err(409, 'Tá»« nÃ y Ä‘Ã£ Ä‘Æ°á»£c tráº£ lá»i');
+    const correct = norm(body.answer) === norm(w.word);
+    it.answered = true; it.correct = correct; s.answeredCount++;
+    if (correct) s.correctCount++;
+    const done = s.answeredCount >= s.items.length;
+    if (done) finish(s);
+    return c.ok({ correct, correctAnswer: w.word, audio: audioOf(w.word), answeredCount: s.answeredCount,
+      total: s.items.length, finished: done,
+      ...(done && { score: s.score, correctCount: s.correctCount, streak: s.streak }) });
+  }
+  if (c.is(/^POST \/vocabulary\/quiz\/([\w-]+)\/finish$/)) {
+    const s = MOCK.sessions[c.m[1]];
+    if (!s) return c.err(404, 'KhÃ´ng tÃ¬m tháº¥y phiÃªn quiz');
+    if ((e = ownerErr(s))) return e;
+    if (!s.finished) finish(s);
+    return c.ok({ sessionId: s._id, finished: true, score: s.score, correctCount: s.correctCount,
+      answeredCount: s.answeredCount, total: s.items.length, streak: s.streak });
+  }
+  return undefined;
+});
+
+
+
+
+=== FILE: mock-data.js ===
+'use strict';
+// Dá»¯ liá»‡u máº«u cho cháº¿ Ä‘á»™ "Dá»¯ liá»‡u máº«u trong trÃ¬nh duyá»‡t": 6 chá»§ Ä‘á» Ä‘á»c hiá»ƒu, 14 bÃ i Ä‘á»c, 8 topic tá»« vá»±ng.
+const SEED = {
+  readingTopics: ['Du lá»‹ch', 'Äá»i sá»‘ng', 'TrÆ°á»ng há»c', 'CÃ´ng nghá»‡', 'Sá»©c khoáº»', 'MÃ´i trÆ°á»ng'],
+  // [chá»‰ sá»‘ chá»§ Ä‘á», tiÃªu Ä‘á», ná»™i dung (cÃ¡c Ä‘oáº¡n cÃ¡ch nhau báº±ng \n)]
+  readings: [
+    [0, 'A weekend in Há»™i An', 'We arrived in Há»™i An on Friday evening. The old town was full of lanterns, and the river smelled of grilled corn.\nOn Saturday we rented bicycles and rode past rice fields to the beach. A woman sold us fresh coconuts for twenty thousand dong.'],
+    [0, 'Taking the night train to Huáº¿', 'The night train leaves at nine. Our cabin had four beds, and a quiet student from ÄÃ  Náºµng shared it with us.\nI slept badly, but I woke up to a pink sky over the mountains.'],
+    [0, 'Street food in HÃ  Ná»™i', 'Every morning, the streets of the Old Quarter fill with the smell of phá»Ÿ. Vendors carry baskets on their shoulders and call out to passers-by.\nMy favourite place is a tiny stall with six plastic stools. The owner remembers every customer, and he always asks if I want extra herbs.'],
+    [1, 'Cooking for the first time', 'Last month I moved into a small flat. My mother called every day to ask what I had eaten.\nSo I learned to cook rice, boil eggs, and make a soup that was only slightly too salty.'],
+    [1, 'My morning routine', 'I wake up at six and drink a glass of water before I do anything else. Then I stretch for ten minutes while the kettle boils.\nBreakfast is usually sticky rice or a bowl of noodles. I leave home at seven to avoid the traffic.'],
+    [1, 'Rainy season in SÃ i GÃ²n', 'It rains almost every afternoon from May to October. The sky turns grey, the wind rises, and everyone rushes to find shelter.\nAfter an hour the water drains away and the city feels fresh. Children run outside to play in the puddles.'],
+    [2, 'My first day at university', 'I was nervous when I entered the big gate. Hundreds of students were looking for their classrooms, and I could not find mine.\nA senior student showed me the way and gave me her phone number. By lunch I had three new friends.'],
+    [2, 'How to prepare for an exam', 'Start two weeks early and make a simple timetable. Study one subject for an hour, then take a short break.\nDo not stay up all night before the exam. A good sleep helps you remember more than another hour of reading.'],
+    [3, 'Learning English with my phone', 'I use my phone for ten minutes every day to review new words. Short lessons are easier to finish than long ones.\nI also listen to English songs on the bus. At first I understood almost nothing, but now I can follow the chorus.'],
+    [3, 'The problem with social media', 'Many teenagers check their phones more than a hundred times a day. They say it helps them stay in touch with friends.\nHowever, too much screen time can make it hard to sleep. Some families now keep all phones in a basket during dinner.'],
+    [4, 'Why we should drink more water', 'Our bodies are about sixty percent water, so we need to drink every day. Many people only drink when they feel thirsty, but by then the body is already tired.\nA simple habit is to keep a bottle on your desk. Try to finish two bottles before lunch and one more before dinner.'],
+    [4, 'Walking to work', 'Last year my doctor told me to exercise more. I did not have time for the gym, so I started walking to work instead.\nIt takes forty minutes, but I enjoy it. I listen to the radio, say hello to the neighbours, and arrive with a clear head.'],
+    [5, 'Plastic bags at the market', 'My grandmother used to take a bamboo basket to the market. Today most sellers wrap everything in thin plastic bags, even a single lemon.\nOur class counted forty bags in one morning. We now carry cloth bags and ask the sellers to skip the plastic.'],
+    [5, 'Planting trees on Sunday', 'Every first Sunday of the month, our neighbourhood plants trees along the canal. Old and young people work together, and someone always brings iced tea.\nThe young trees are small, but in ten years they will give shade to the whole street.'],
+  ],
+  // [tÃªn topic, 'tá»«=nghÄ©a; tá»«=nghÄ©a; ...']
+  vocab: [
+    ['Gia Ä‘Ã¬nh', 'mother=máº¹; father=bá»‘; brother=anh hoáº·c em trai; sister=chá»‹ hoáº·c em gÃ¡i; grandmother=bÃ ; grandfather=Ã´ng; uncle=chÃº hoáº·c bÃ¡c; aunt=cÃ´ hoáº·c dÃ¬; cousin=anh chá»‹ em há»; parents=bá»‘ máº¹; husband=chá»“ng; wife=vá»£'],
+    ['Äá»“ Äƒn', 'bread=bÃ¡nh mÃ¬; rice=cÆ¡m; chicken=thá»‹t gÃ ; soup=canh; noodle=mÃ¬ sá»£i; egg=trá»©ng; fish=cÃ¡; vegetable=rau; fruit=trÃ¡i cÃ¢y; sugar=Ä‘Æ°á»ng; pork=thá»‹t lá»£n; beef=thá»‹t bÃ²'],
+    ['TrÆ°á»ng há»c', 'teacher=giÃ¡o viÃªn; student=há»c sinh; classroom=lá»›p há»c; homework=bÃ i táº­p vá» nhÃ ; exam=ká»³ thi; lesson=bÃ i há»c; library=thÆ° viá»‡n; notebook=vá»Ÿ; pencil=bÃºt chÃ¬; desk=bÃ n há»c; schedule=thá»i khoÃ¡ biá»ƒu; grade=Ä‘iá»ƒm sá»‘'],
+    ['Du lá»‹ch', 'ticket=vÃ©; passport=há»™ chiáº¿u; luggage=hÃ nh lÃ½; hotel=khÃ¡ch sáº¡n; airport=sÃ¢n bay; map=báº£n Ä‘á»“; journey=chuyáº¿n Ä‘i; beach=bÃ£i biá»ƒn; mountain=nÃºi; souvenir=quÃ  lÆ°u niá»‡m; guide=hÆ°á»›ng dáº«n viÃªn; tourist=khÃ¡ch du lá»‹ch'],
+    ['CÃ´ng nghá»‡', 'computer=mÃ¡y tÃ­nh; keyboard=bÃ n phÃ­m; password=máº­t kháº©u; website=trang web; battery=pin; screen=mÃ n hÃ¬nh; download=táº£i xuá»‘ng; internet=máº¡ng; camera=mÃ¡y áº£nh; software=pháº§n má»m'],
+    ['Sá»©c khoáº»', 'doctor=bÃ¡c sÄ©; medicine=thuá»‘c; headache=Ä‘au Ä‘áº§u; fever=sá»‘t; cough=ho; exercise=táº­p thá»ƒ dá»¥c; hospital=bá»‡nh viá»‡n; healthy=khoáº» máº¡nh; vitamin=vitamin; sleep=giáº¥c ngá»§'],
+    ['Thá»i tiáº¿t', 'rain=mÆ°a; sunny=náº¯ng; cloud=mÃ¢y; wind=giÃ³; storm=bÃ£o; thunder=sáº¥m; snow=tuyáº¿t; humid=áº©m; temperature=nhiá»‡t Ä‘á»™; forecast=dá»± bÃ¡o'],
+    ['Nghá» nghiá»‡p', 'engineer=ká»¹ sÆ°; nurse=y tÃ¡; farmer=nÃ´ng dÃ¢n; driver=tÃ i xáº¿; lawyer=luáº­t sÆ°; chef=Ä‘áº§u báº¿p; dentist=nha sÄ©; accountant=káº¿ toÃ¡n; designer=nhÃ  thiáº¿t káº¿; journalist=nhÃ  bÃ¡o'],
+  ],
+};
+
+// Biáº¿n SEED thÃ nh cÃ¡c máº£ng cÃ³ _id, cÃ¹ng hÃ¬nh dáº¡ng vá»›i dá»¯ liá»‡u tá»« MongoDB
+function buildSeed() {
+  const rt = SEED.readingTopics.map((name, i) => ({ _id: 'rt' + (i + 1), name }));
+  const reads = SEED.readings.map(([t, title, content], i) => ({
+    _id: 'rd' + (i + 1), topic: rt[t]._id, title, content, createdAt: 1000 - i,
+  }));
+  const vt = SEED.vocab.map(([name], i) => ({ _id: 'vt' + (i + 1), name }));
+  const words = [];
+  SEED.vocab.forEach(([, list], i) => {
+    list.split('; ').forEach((pair) => {
+      const [word, meaning] = pair.split('=');
+      words.push({ _id: 'w' + (words.length + 1), topic: vt[i]._id, word, meaning });
+    });
+  });
+  return { rt, reads, vt, words };
+}
+
+// Cho phÃ©p script seed cá»§a backend dÃ¹ng chung bá»™ dá»¯ liá»‡u nÃ y (trÃ¬nh duyá»‡t bá» qua dÃ²ng nÃ y)
+if (typeof module !== 'undefined') module.exports = { SEED, buildSeed };
+
+
+
+
+=== FILE: quiz.js ===
+'use strict';
+// Tab LÃ m quiz. Äiá»ƒm vÃ  chuá»—i ngÃ y do server tÃ­nh; á»Ÿ Ä‘Ã¢y chá»‰ hiá»ƒn thá»‹.
+// S.quiz = { sid, topic, meanings:{wordId: nghÄ©a}, ids[], i, fb, history[], final, result } hoáº·c null
+
+const quizView = () => (!S.quiz ? quizPicker() : S.quiz.result ? quizResult(S.quiz) : quizQuestion(S.quiz));
+
+function quizPicker() {
+  const ts = S.vocab.topics.filter((t) => t.wordCount > 0);
+  if (!ts.length) return `<p class="empty">ChÆ°a cÃ³ topic nÃ o cÃ³ tá»« vá»±ng.${isAdmin() ? ' ThÃªm tá»« á»Ÿ tab Tá»« vá»±ng rá»“i quay láº¡i.' : ''}</p>`;
+  const pick = ts.some((t) => t._id === S.quizTopic) ? S.quizTopic : ts[0]._id;
+  const items = ts.map((t) => `<li data-name="${esc(fold(t.name))}"><label class="topt"><input type="radio" name="topic" value="${esc(t._id)}"${t._id === pick ? ' checked' : ''}><span class="box"><span class="n serif">${esc(t.name)}</span><span class="c">${t.wordCount} tá»«</span></span></label></li>`).join('');
+  return `<section class="narrow">
+    <h2>Viáº¿t láº¡i tá»« tiáº¿ng Anh</h2>
+    <p class="lead">Má»—i cÃ¢u hiá»‡n nghÄ©a tiáº¿ng Viá»‡t, báº¡n viáº¿t tá»« tiáº¿ng Anh tÆ°Æ¡ng á»©ng. Má»—i tá»« chá»‰ tráº£ lá»i Ä‘Æ°á»£c má»™t láº§n, Ä‘iá»ƒm do server cháº¥m. LÃ m xong má»™t bÃ i lÃ  tÃ­nh má»™t ngÃ y há»c. Náº¿u báº¡n rá»i sang tab khÃ¡c khi Ä‘ang lÃ m, bÃ i sáº½ tá»± Ä‘á»™ng ná»™p khi báº¡n quay láº¡i.</p>
+    <form data-form="q-start" class="picker">
+      <label class="lbl" for="tsearch">Chá»n topic</label>
+      <input id="tsearch" type="search" placeholder="TÃ¬m topic, gÃµ khÃ´ng dáº¥u cÅ©ng Ä‘Æ°á»£c" autocomplete="off" data-filter="#tlist" data-none="#tnone">
+      <ul id="tlist" class="tlist">${items}</ul>
+      <p id="tnone" class="empty" hidden>KhÃ´ng cÃ³ topic nÃ o khá»›p. Thá»­ gÃµ ngáº¯n hÆ¡n.</p>
+      <div><button class="btn">Báº¯t Ä‘áº§u lÃ m bÃ i</button></div>
+    </form>
+  </section>`;
+}
+
+function quizQuestion(z) {
+  const id = z.ids[z.i], n = z.ids.length, done = z.i + (z.fb ? 1 : 0);
+  return `<section class="sheet">
+    <div class="prog" role="progressbar" aria-label="Tiáº¿n Ä‘á»™" aria-valuemin="0" aria-valuemax="${n}" aria-valuenow="${done}"><i style="width:${Math.round((done / n) * 100)}%"></i></div>
+    <p class="count">CÃ¢u ${z.i + 1} trÃªn ${n}, topic ${esc(z.topic)}</p>
+    <p class="prompt serif">${esc(z.meanings[id])}</p>
+    ${z.fb ? feedback(z) : `<form data-form="q-check" class="write"><label class="sr" for="ans">Tá»« tiáº¿ng Anh</label><input id="ans" name="answer" autocomplete="off" autocapitalize="off" spellcheck="false" required data-autofocus><button class="btn">Kiá»ƒm tra</button></form>`}
+    <p class="foot"><button class="link" data-act="q-finish">Ná»™p bÃ i sá»›m</button></p>
+    <p class="hint">Rá»i sang tab khÃ¡c khi Ä‘ang lÃ m thÃ¬ bÃ i sáº½ tá»± Ä‘á»™ng ná»™p khi báº¡n quay láº¡i.</p>
+  </section>`;
+}
+
+function feedback(z) {
+  const fb = z.fb, last = z.history[z.history.length - 1];
+  const next = fb.finished
+    ? '<button class="btn" data-act="q-result" data-autofocus>Xem káº¿t quáº£</button>'
+    : '<button class="btn" data-act="q-next" data-autofocus>CÃ¢u tiáº¿p theo</button>';
+  const verdict = fb.correct
+    ? '<p>ChÃ­nh xÃ¡c.</p>'
+    : `<p>ChÆ°a Ä‘Ãºng, Ä‘Ã¡p Ã¡n lÃ  <strong class="serif key">${esc(fb.correctAnswer)}</strong></p>`;
+  return `<div class="answer ${fb.correct ? 'ok' : 'bad'}"><p class="written serif">${esc(last.given || '(bá» trá»‘ng)')}</p>${verdict}${speakBtn(fb.correctAnswer, fb.audio)}</div>${next}`;
+}
+
+function quizResult(z) {
+  const r = z.result, skipped = r.total - z.history.length;
+  const rows = z.history.map((h) => `<tr class="${h.correct ? 'ok' : 'bad'}"><td>${esc(h.meaning)}</td><td class="serif">${esc(h.given || '(bá» trá»‘ng)')}</td><td class="serif">${esc(h.answer)}</td></tr>`).join('');
+  const streak = r.streak ? `<p class="lead">Chuá»—i ngÃ y há»c cá»§a báº¡n: <b>${r.streak.currentStreak} ngÃ y</b>.</p>` : '';
+  return `<section class="sheet">
+    <p class="count">Topic ${esc(z.topic)}</p>
+    ${z.auto ? '<p class="notice">Báº¡n Ä‘Ã£ rá»i khá»i tab khi Ä‘ang lÃ m bÃ i nÃªn bÃ i Ä‘Æ°á»£c ná»™p tá»± Ä‘á»™ng. CÃ¡c cÃ¢u chÆ°a tráº£ lá»i tÃ­nh lÃ  sai.</p>' : ''}
+    <p class="mark" role="img" aria-label="Äiá»ƒm ${r.score} trÃªn 100">${r.score}</p>
+    <p class="lead">ÄÃºng ${r.correctCount} trÃªn ${r.total} cÃ¢u${skipped ? `, ${skipped} cÃ¢u bá» qua tÃ­nh lÃ  sai` : ''}. Äiá»ƒm Ä‘Ã£ Ä‘Æ°á»£c lÆ°u.</p>
+    ${streak}
+    ${rows ? `<table><thead><tr><th scope="col">NghÄ©a</th><th scope="col">Báº¡n viáº¿t</th><th scope="col">ÄÃ¡p Ã¡n</th></tr></thead><tbody>${rows}</tbody></table>` : ''}
+    <button class="btn" data-act="q-again" data-autofocus>LÃ m bÃ i khÃ¡c</button>
+  </section>`;
+}
+
+forms['q-start'] = async (d) => {
+  if (!d.topic) throw new Error('HÃ£y chá»n má»™t topic trÆ°á»›c khi báº¯t Ä‘áº§u');
+  S.quizTopic = d.topic;
+  const r = await api('GET', `/vocabulary/topics/${d.topic}/words`);
+  S.quiz = { sid: r.sessionId, topic: r.topic.name, meanings: r.words, ids: Object.keys(r.words), i: 0, fb: null, history: [], final: null, result: null };
+  render();
+};
+forms['q-check'] = async (d) => {
+  const z = S.quiz, id = z.ids[z.i];
+  const fb = await api('POST', `/vocabulary/quiz/${z.sid}/check`, { wordId: id, answer: d.answer });
+  z.fb = fb;
+  z.history.push({ meaning: z.meanings[id], given: d.answer.trim(), correct: fb.correct, answer: fb.correctAnswer });
+  if (fb.finished) {
+    z.final = { score: fb.score, correctCount: fb.correctCount, total: fb.total, streak: fb.streak };
+    showStreak(fb.streak); // server Ä‘Ã£ tá»± ghi nháº­n chuá»—i ngÃ y khi chá»‘t Ä‘iá»ƒm
+  }
+  render();
+};
+actions['q-next'] = () => { S.quiz.i += 1; S.quiz.fb = null; render(); };
+actions['q-result'] = () => { S.quiz.result = S.quiz.final; render(); };
+actions['q-finish'] = () => run(async () => {
+  const z = S.quiz, r = await api('POST', `/vocabulary/quiz/${z.sid}/finish`);
+  z.result = { score: r.score, correctCount: r.correctCount, total: r.total, streak: r.streak };
+  showStreak(r.streak);
+  render();
+});
+actions['q-again'] = () => run(async () => { S.quiz = null; await loadTopics(); render(); });
+
+// Tá»± ná»™p bÃ i khi ngÆ°á»i dÃ¹ng rá»i tab giá»¯a chá»«ng.
+// visibilitychange chá»‰ bÃ¡o khi chuyá»ƒn tab, thu nhá» cá»­a sá»• hoáº·c khoÃ¡ mÃ n hÃ¬nh. NÃ³ khÃ´ng bÃ¡o khi
+// báº¡n báº¥m sang cá»­a sá»• khÃ¡c Ä‘áº·t cáº¡nh nhau (muá»‘n báº¯t cáº£ trÆ°á»ng há»£p Ä‘Ã³ pháº£i dÃ¹ng sá»± kiá»‡n blur,
+// nhÆ°ng blur cÅ©ng ná»• khi má»Ÿ DevTools hay báº¥m thanh Ä‘á»‹a chá»‰ nÃªn dá»… ná»™p nháº§m).
+function autoSubmitQuiz(z) {
+  z.submitting = true;
+  run(async () => {
+    try {
+      if (z.final) {
+        z.result = z.final; // phiÃªn Ä‘Ã£ Ä‘Æ°á»£c chá»‘t Ä‘iá»ƒm á»Ÿ láº§n tráº£ lá»i cuá»‘i
+      } else {
+        const r = await api('POST', `/vocabulary/quiz/${z.sid}/finish`);
+        z.result = { score: r.score, correctCount: r.correctCount, total: r.total, streak: r.streak };
+        showStreak(r.streak);
+      }
+      z.auto = true;
+      S.tab = 'quiz';
+      render();
+      toast('Báº¡n Ä‘Ã£ rá»i khá»i tab nÃªn bÃ i lÃ m Ä‘Æ°á»£c ná»™p tá»± Ä‘á»™ng', true);
+    } finally {
+      z.submitting = false;
+    }
+  });
+}
+
+document.addEventListener('visibilitychange', () => {
+  const z = S.quiz;
+  if (document.hidden) {
+    if (z && !z.result) z.left = true; // chá»‰ Ä‘Ã¡nh dáº¥u, viá»‡c ná»™p bÃ i lÃ m khi quay láº¡i
+    return;
+  }
+  if (!z || z.result || !z.left || z.submitting) return;
+  z.left = false;
+  autoSubmitQuiz(z);
+});
+
+
+
+
+=== FILE: reading.js ===
+'use strict';
+// Tab Äá»c hiá»ƒu. ThÃªm, sá»­a, xoÃ¡ chá»‰ hiá»‡n vá»›i quáº£n trá»‹ viÃªn (server váº«n kiá»ƒm tra láº¡i quyá»n).
+async function loadReading() {
+  const r = S.reading;
+  // Hai yÃªu cáº§u Ä‘á»™c láº­p nÃªn gá»i song song, Ä‘á»¡ pháº£i chá» ná»‘i Ä‘uÃ´i nhau
+  [r.topics, r.items] = await Promise.all([
+    api('GET', '/reading/topics'),
+    api('GET', '/reading' + (r.topic ? '?topic=' + encodeURIComponent(r.topic) : '')),
+  ]);
+}
+
+function readingView() {
+  const r = S.reading;
+  const chips = [['', 'Táº¥t cáº£'], ...r.topics.map((t) => [t._id, t.name])]
+    .map(([id, name]) => `<button class="chip" data-act="r-filter" data-id="${esc(id)}" aria-pressed="${r.topic === id}">${esc(name)}</button>`)
+    .join('');
+  const topicName = (id) => (r.topics.find((t) => t._id === id) || {}).name || '';
+  const list = r.items.length
+    ? r.items.map((x) => `<li><button class="row-link" data-act="r-open" data-id="${esc(x._id)}" aria-current="${!!r.open && r.open.reading._id === x._id}"><span class="t">${esc(x.title)}</span><span class="m">${esc(topicName(x.topic))}</span></button></li>`).join('')
+    : `<li class="empty">ChÆ°a cÃ³ bÃ i Ä‘á»c nÃ o trong chá»§ Ä‘á» nÃ y.${isAdmin() ? ' ThÃªm bÃ i Ä‘áº§u tiÃªn á»Ÿ bÃªn dÆ°á»›i.' : ''}</li>`;
+  const topicTools = isAdmin() && r.topic
+    ? `<p><button class="link" data-act="r-rename-topic">Äá»•i tÃªn chá»§ Ä‘á» nÃ y</button>
+       <button class="link danger" data-act="r-del-topic" data-confirm="Báº¥m láº§n ná»¯a Ä‘á»ƒ xoÃ¡ cáº£ chá»§ Ä‘á»">XoÃ¡ chá»§ Ä‘á»</button></p>` : '';
+  return `<div class="cols">
+    <section aria-label="Danh sÃ¡ch bÃ i Ä‘á»c">
+      <div class="chips" role="group" aria-label="Lá»c theo chá»§ Ä‘á»">${chips}</div>
+      ${r.renameTopic ? renameTopicForm() : topicTools}
+      <ul class="list">${list}</ul>
+      ${isAdmin() ? readingForms() : ''}
+    </section>
+    <article class="page" aria-live="polite">${r.edit ? readingEdit() : readingPage()}</article>
+  </div>`;
+}
+
+function readingPage() {
+  const o = S.reading.open;
+  if (!o) return '<p class="empty">Chá»n má»™t bÃ i á»Ÿ bÃªn trÃ¡i Ä‘á»ƒ báº¯t Ä‘áº§u Ä‘á»c.</p>';
+  const { reading, topic, quiz } = o;
+  const paras = reading.content.split(/\n+/).map((p) => `<p class="body serif">${esc(p)}</p>`).join('');
+  const tools = isAdmin()
+    ? `<p><button class="link" data-act="r-edit">Sá»­a bÃ i</button>
+       <button class="link danger" data-act="r-del" data-confirm="Báº¥m láº§n ná»¯a Ä‘á»ƒ xoÃ¡ bÃ i">XoÃ¡ bÃ i</button></p>` : '';
+  return `<h2>${esc(reading.title)}</h2>
+    <p class="by">Chá»§ Ä‘á»: ${esc(topic ? topic.name : 'Ä‘Ã£ bá»‹ xoÃ¡')}</p>
+    ${tools}
+    <div style="height:16px"></div>${paras}
+    <aside class="stamp" aria-label="Báº£n ghi quiz">
+      <h3>ÄÃ£ ghi vÃ o collection quiz</h3>
+      <dl><dt>Loáº¡i</dt><dd>${esc(quiz.type)}</dd><dt>Chá»§ Ä‘á»</dt><dd>${esc(topic ? topic.name : '')}</dd><dt>LÆ°á»£t má»Ÿ</dt><dd>${quiz.views}</dd></dl>
+    </aside>`;
+}
+
+function topicOptions(selected) {
+  return S.reading.topics.map((t) => `<option value="${esc(t._id)}"${t._id === selected ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
+}
+
+function readingEdit() {
+  const { reading } = S.reading.open;
+  return `<h2>Sá»­a bÃ i Ä‘á»c</h2>
+    <form data-form="r-save" class="stack wide">
+      <label>Chá»§ Ä‘á»<select name="topic" required>${topicOptions(reading.topic)}</select></label>
+      <label>TiÃªu Ä‘á»<input name="title" value="${esc(reading.title)}" required maxlength="200" data-autofocus></label>
+      <label>Ná»™i dung<textarea name="content" rows="10" required>${esc(reading.content)}</textarea></label>
+      <div class="inline"><button class="btn">LÆ°u thay Ä‘á»•i</button><button type="button" class="link" data-act="r-cancel">Huá»·</button></div>
+    </form>`;
+}
+
+function renameTopicForm() {
+  const t = S.reading.topics.find((x) => x._id === S.reading.topic);
+  return `<form data-form="r-rename" class="inline" style="margin:8px 0">
+    <label class="sr" for="rtn">TÃªn chá»§ Ä‘á»</label><input id="rtn" name="name" value="${esc(t ? t.name : '')}" required maxlength="100" data-autofocus>
+    <button class="btn">LÆ°u tÃªn</button><button type="button" class="link" data-act="r-cancel">Huá»·</button></form>`;
+}
+
+function readingForms() {
+  return `<details class="add"><summary>ThÃªm chá»§ Ä‘á»</summary>
+      <form data-form="r-topic" class="stack"><label>TÃªn chá»§ Ä‘á»<input name="name" required maxlength="100"></label><button class="btn">Táº¡o chá»§ Ä‘á»</button></form>
+    </details>
+    <details class="add"><summary>ThÃªm bÃ i Ä‘á»c</summary>
+      <form data-form="r-add" class="stack">
+        <label>Chá»§ Ä‘á»<select name="topic" required>${topicOptions(S.reading.topic)}</select></label>
+        <label>TiÃªu Ä‘á»<input name="title" required maxlength="200"></label>
+        <label>Ná»™i dung<textarea name="content" rows="6" required></textarea></label>
+        <button class="btn">LÆ°u bÃ i Ä‘á»c</button>
+      </form>
+    </details>`;
+}
+
+actions['r-filter'] = (el) => run(async () => {
+  S.reading.topic = el.dataset.id;
+  S.reading.renameTopic = false;
+  await loadReading();
+  render();
+});
+actions['r-open'] = (el) => run(async () => {
+  const o = await api('GET', '/reading/' + el.dataset.id);
+  S.reading.open = o;
+  S.reading.edit = false;
+  showStreak(o.streak);
+  render();
+});
+actions['r-edit'] = () => { S.reading.edit = true; render(); };
+actions['r-cancel'] = () => { S.reading.edit = false; S.reading.renameTopic = false; render(); };
+actions['r-rename-topic'] = () => { S.reading.renameTopic = true; render(); };
+actions['r-del'] = () => run(async () => {
+  await api('DELETE', '/reading/' + S.reading.open.reading._id);
+  S.reading.open = null;
+  toast('ÄÃ£ xoÃ¡ bÃ i Ä‘á»c');
+  await loadReading();
+  render();
+});
+actions['r-del-topic'] = () => run(async () => {
+  await api('DELETE', '/reading/topics/' + S.reading.topic);
+  S.reading.topic = '';
+  S.reading.open = null;
+  toast('ÄÃ£ xoÃ¡ chá»§ Ä‘á» vÃ  cÃ¡c bÃ i Ä‘á»c bÃªn trong');
+  await loadReading();
+  render();
+});
+
+forms['r-topic'] = async (d) => { await api('POST', '/reading/topics', { name: d.name }); toast('ÄÃ£ táº¡o chá»§ Ä‘á»'); await loadReading(); render(); };
+forms['r-add'] = async (d) => { await api('POST', '/reading', d); toast('ÄÃ£ lÆ°u bÃ i Ä‘á»c'); await loadReading(); render(); };
+forms['r-rename'] = async (d) => {
+  await api('PUT', '/reading/topics/' + S.reading.topic, { name: d.name });
+  S.reading.renameTopic = false;
+  toast('ÄÃ£ Ä‘á»•i tÃªn chá»§ Ä‘á»');
+  await loadReading();
+  render();
+};
+forms['r-save'] = async (d) => {
+  const id = S.reading.open.reading._id;
+  await api('PUT', '/reading/' + id, d);
+  // Má»Ÿ láº¡i bÃ i Ä‘á»ƒ tháº¥y ná»™i dung má»›i (lÆ°á»£t má»Ÿ tÄƒng thÃªm 1, cháº¥p nháº­n Ä‘Æ°á»£c)
+  S.reading.open = await api('GET', '/reading/' + id);
+  S.reading.edit = false;
+  toast('ÄÃ£ lÆ°u bÃ i Ä‘á»c');
+  await loadReading();
+  render();
+};
+
+
+
+
+=== FILE: streak.js ===
+'use strict';
+// Trang theo dÃµi chuá»—i ngÃ y há»c: sá»‘ liá»‡u, lá»‹ch thÃ¡ng, 7 ngÃ y gáº§n nháº¥t.
+const THU = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+const pad = (n) => String(n).padStart(2, '0');
+const ymd = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`; // m tÃ­nh tá»« 0
+
+async function loadStreak() {
+  const data = await api('GET', '/streak');
+  const [y, m] = data.today.split('-').map(Number);
+  const keep = S.streak && S.streak.shown;
+  S.streak = { data, y: keep ? S.streak.y : y, m: keep ? S.streak.m : m - 1, shown: true };
+  showStreak({ currentStreak: data.currentStreak, longestStreak: data.longestStreak });
+}
+
+function streakView() {
+  const st = S.streak;
+  if (!st) return '<p class="empty">ChÆ°a cÃ³ dá»¯ liá»‡u chuá»—i ngÃ y.</p>';
+  const d = st.data;
+  const days = new Set(d.activeDays);
+  const msg = d.todayDone
+    ? 'HÃ´m nay báº¡n Ä‘Ã£ há»c xong. Háº¹n gáº·p láº¡i vÃ o ngÃ y mai.'
+    : d.currentStreak > 0
+      ? `Há»c má»™t bÃ i Ä‘á»c hoáº·c má»™t bÃ i quiz hÃ´m nay Ä‘á»ƒ giá»¯ chuá»—i ${d.currentStreak} ngÃ y.`
+      : 'Há»c má»™t bÃ i Ä‘á»c hoáº·c má»™t bÃ i quiz Ä‘á»ƒ báº¯t Ä‘áº§u chuá»—i má»›i.';
+
+  return `<section class="narrow">
+    <h2>Chuá»—i ngÃ y há»c</h2>
+    <div class="stats">
+      <p class="big"><b>${d.currentStreak}</b><span>ngÃ y liÃªn tiáº¿p</span></p>
+      <p class="big"><b>${d.longestStreak}</b><span>chuá»—i dÃ i nháº¥t</span></p>
+      <p class="big"><b>${days.size}</b><span>ngÃ y Ä‘Ã£ há»c</span></p>
+    </div>
+    <p class="lead ${d.todayDone ? 'done' : ''}">${esc(msg)}</p>
+    ${weekStrip(days, d.today)}
+    ${calendar(days, d.today, st)}
+    <p class="hint">NgÃ y tÃ­nh theo giá» Viá»‡t Nam. Äá»c má»™t bÃ i hoáº·c káº¿t thÃºc má»™t bÃ i quiz khi Ä‘Ã£ Ä‘Äƒng nháº­p lÃ  tÃ­nh má»™t ngÃ y há»c.</p>
+  </section>`;
+}
+
+function weekStrip(days, today) {
+  const [y, m, dd] = today.split('-').map(Number);
+  const cells = [];
+  for (let i = 6; i >= 0; i--) {
+    const dt = new Date(Date.UTC(y, m - 1, dd - i));
+    const key = ymd(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate());
+    const on = days.has(key);
+    cells.push(`<li class="${on ? 'on' : ''}${key === today ? ' today' : ''}">
+      <span class="dow">${THU[(dt.getUTCDay() + 6) % 7]}</span>
+      <span class="dot" aria-hidden="true">${on ? 'âœ“' : ''}</span>
+      <span class="sr">${key}: ${on ? 'Ä‘Ã£ há»c' : 'chÆ°a há»c'}</span></li>`);
+  }
+  return `<h3>7 ngÃ y gáº§n nháº¥t</h3><ol class="week">${cells.join('')}</ol>`;
+}
+
+function calendar(days, today, st) {
+  const { y, m } = st;
+  const first = (new Date(Date.UTC(y, m, 1)).getUTCDay() + 6) % 7; // thá»© Hai = 0
+  const len = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const [ty, tm] = today.split('-').map(Number);
+  const atNow = y === ty && m === tm - 1;
+  let cells = THU.map((t) => `<div class="cal-h" aria-hidden="true">${t}</div>`).join('');
+  for (let i = 0; i < first; i++) cells += '<div></div>';
+  for (let d = 1; d <= len; d++) {
+    const key = ymd(y, m, d);
+    const on = days.has(key);
+    const cls = (on ? 'on ' : '') + (key === today ? 'today ' : '') + (key > today ? 'future' : '');
+    cells += `<div class="cal-d ${cls}"><span aria-hidden="true">${d}</span><span class="sr">${key}: ${on ? 'Ä‘Ã£ há»c' : key > today ? 'chÆ°a tá»›i' : 'chÆ°a há»c'}</span></div>`;
+  }
+  return `<div class="cal-head">
+      <button class="btn ghost" data-act="s-prev" aria-label="ThÃ¡ng trÆ°á»›c">â€¹</button>
+      <h3>ThÃ¡ng ${m + 1} nÄƒm ${y}</h3>
+      <button class="btn ghost" data-act="s-next" aria-label="ThÃ¡ng sau"${atNow ? ' disabled' : ''}>â€º</button>
+    </div>
+    <div class="cal">${cells}</div>`;
+}
+
+const shiftMonth = (n) => {
+  const st = S.streak;
+  const dt = new Date(Date.UTC(st.y, st.m + n, 1));
+  st.y = dt.getUTCFullYear();
+  st.m = dt.getUTCMonth();
+  render();
+};
+actions['s-prev'] = () => shiftMonth(-1);
+actions['s-next'] = () => shiftMonth(1);
+
+
+
+
+=== FILE: styles-b.css ===
+/* Giao diá»‡n báº£ng Ä‘en Ä‘Ã£ bá» (chá»‘t theme vá»Ÿ Ã´ li). File nÃ y cÃ³ thá»ƒ xoÃ¡. */
+
+
+
+
+=== FILE: styles.css ===
+:root{--paper:#fdfdfb;--rule:#dbe5f5;--ink:#17233f;--ink-deep:#0b1426;--pencil:#66718c;--red:#d3473f;--hi:#ffe066;--blue:#2d5bd1;color-scheme:light;
+  /* Be Vietnam Pro vÃ  Lora Ä‘á»u cÃ³ Ä‘á»§ dáº¥u tiáº¿ng Viá»‡t; náº¿u khÃ´ng táº£i Ä‘Æ°á»£c font thÃ¬ dÃ¹ng font há»‡ thá»‘ng */
+  --sans:"Be Vietnam Pro","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+  --serif:"Lora",Cambria,"Palatino Linotype",Georgia,serif}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{background:var(--paper)}
+body{margin:0;min-height:100vh;padding:0 24px 64px 96px;color:var(--ink);font:15.5px/32px var(--sans);
+  background:repeating-linear-gradient(to bottom,transparent 0 31px,var(--rule) 31px 32px) 0 8px}
+body::before{content:"";position:fixed;inset:0 auto 0 72px;width:2px;background:var(--red);opacity:.5;pointer-events:none}
+body>*{max-width:1040px}
+h1,h2,h3,.serif{font-family:var(--serif)}
+h1,h2{font-weight:700}
+h2{font-size:30px;line-height:64px;margin:0}
+h3{font-size:18px;line-height:32px;margin:0}
+p{margin:0}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.empty{color:var(--pencil);margin:16px 0}
+.lead{max-width:52ch;margin:8px 0 16px}
+
+.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:0 24px;padding-top:24px}
+.top h1{margin:0;font-size:36px;line-height:64px;letter-spacing:-.01em}
+.user{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;font-size:15px}
+.user>span{font-weight:600}
+.streak{display:inline-flex;align-items:center;gap:6px;padding:0 12px 0 10px;line-height:26px;color:var(--ink);background:var(--paper);border:2px solid var(--ink);border-radius:99px}
+.streak svg{width:18px;height:18px;color:var(--red)}
+.badge{padding:0 10px;font-size:13px;line-height:22px;color:#fff;background:var(--blue);border-radius:99px}
+
+/* Trang chuá»—i ngÃ y */
+.stats{display:flex;flex-wrap:wrap;gap:0 40px}
+.big{display:grid;margin:0}
+.big b{font:700 56px/64px var(--serif)}
+.big span{font-size:14px;color:var(--pencil)}
+.lead.done{color:#1f6b3a;font-weight:600}
+.week{display:flex;gap:8px;margin:8px 0 24px;padding:0;list-style:none}
+.week li{display:grid;justify-items:center;width:44px;text-align:center}
+.week .dow{font-size:13px;color:var(--pencil)}
+.week .dot{display:grid;place-items:center;width:32px;height:32px;line-height:1;font-weight:700;border:2px solid var(--ink);border-radius:50%}
+.week .on .dot{background:var(--hi)}
+.week .today .dow{color:var(--ink);font-weight:700}
+.week .today .dot{border-style:dashed}
+.cal-head{display:flex;align-items:center;justify-content:space-between;max-width:420px}
+.cal-head .btn{padding:0 14px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;max-width:420px;margin:8px 0}
+.cal-h{text-align:center;font-size:13px;color:var(--pencil)}
+.cal-d{display:grid;place-items:center;height:44px;line-height:1;border:2px solid transparent;border-radius:8px}
+.cal-d.on{background:var(--hi);font-weight:700;border-color:var(--ink)}
+.cal-d.today{border:2px dashed var(--blue)}
+.cal-d.on.today{border:2px solid var(--blue)}
+.cal-d.future{color:#a5adc0}
+.hint{margin-top:16px;font-size:13px;line-height:24px;color:var(--pencil)}
+.stack.wide{max-width:none}
+.notice{max-width:520px;margin:8px 0;padding:4px 14px;border-left:4px solid var(--red);background:#fdf3f2}
+.source{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:14px;color:var(--pencil)}
+.source select,.source input{line-height:28px;font-size:14px}
+.source a{color:var(--blue);font-weight:600}
+.tabs{display:flex;gap:4px;border-bottom:2px solid var(--ink)}
+.tabs button{margin-bottom:-2px;padding:0 20px;line-height:40px;font-weight:600;color:var(--pencil);cursor:pointer;
+  background:none;border:2px solid transparent;border-bottom:0;border-radius:10px 10px 0 0}
+.tabs button[aria-selected=true]{background:var(--paper);color:var(--ink);border-color:var(--ink)}
+
+button,input,select,textarea{font:inherit;color:inherit}
+input,select,textarea{min-width:0;min-height:42px;padding:0 14px;line-height:38px;background:var(--paper);border:2px solid var(--ink);border-radius:10px;
+  transition:box-shadow .12s}
+input:hover,select:hover,textarea:hover{box-shadow:0 3px 0 var(--rule)}
+textarea{width:100%;padding:6px 14px;line-height:30px}
+/* NÃºt chÃ­nh: Ä‘á»• bÃ³ng Ä‘áº·c nhÆ° nÃºt báº¥m Ä‘Æ°á»£c in ná»•i trÃªn trang vá»Ÿ, nháº¥n xuá»‘ng thÃ¬ "lÃºn" */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:0 22px;font-weight:600;font-size:15px;letter-spacing:.01em;
+  line-height:1.2;white-space:nowrap;flex-shrink:0;
+  color:#fff;background:var(--ink);border:2px solid var(--ink);border-radius:12px;box-shadow:0 4px 0 var(--ink-deep);cursor:pointer;
+  transition:transform .12s,box-shadow .12s,background-color .12s}
+.btn:hover{background:#243459;transform:translateY(-1px);box-shadow:0 5px 0 var(--ink-deep)}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink-deep)}
+.btn.ghost{color:var(--ink);background:var(--paper);border-color:var(--ink);box-shadow:0 4px 0 var(--ink)}
+.btn.ghost:hover{background:var(--hi);box-shadow:0 5px 0 var(--ink)}
+.btn.ghost:active{box-shadow:0 1px 0 var(--ink)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:0 4px 0 var(--pencil);background:var(--pencil);border-color:var(--pencil)}
+.btn.ghost:disabled{color:var(--pencil);background:var(--paper);box-shadow:0 4px 0 var(--pencil)}
+/* NÃºt dáº¡ng chá»¯: gáº¡ch chÃ¢n báº±ng nÃ©t bÃºt highlight thay vÃ¬ gáº¡ch chÃ¢n máº·c Ä‘á»‹nh */
+.link{padding:2px 8px;font-weight:600;color:var(--blue);background:none;border:0;border-radius:6px;cursor:pointer;
+  transition:background-color .12s}
+.link:hover{background:rgba(45,91,209,.1)}
+.link.danger{color:var(--red)}
+.link.danger:hover{background:rgba(211,71,63,.1)}
+.armed,.link.armed{color:#fff;background:var(--red);font-weight:700}
+.armed:hover,.link.armed:hover{background:#b93a33}
+.icon{display:inline-grid;place-items:center;width:36px;height:36px;padding:0;color:var(--blue);background:var(--paper);border:2px solid var(--blue);border-radius:50%;cursor:pointer;
+  transition:background-color .12s,color .12s,transform .12s}
+.icon:hover{background:var(--blue);color:#fff}
+.icon:active{transform:scale(.92)}
+:focus-visible{outline:3px solid var(--blue);outline-offset:3px}
+@media (prefers-reduced-motion:reduce){.btn,.link,.icon{transition:none}.btn:hover,.btn:active{transform:none}}
+
+.stack{display:grid;gap:8px;max-width:420px;padding:8px 0 16px}
+.stack label{display:grid;font-weight:600;font-size:14px}
+.inline{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.add summary{cursor:pointer;font-weight:600}
+.add{margin-top:16px}
+.cols{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:0 48px;margin-top:32px}
+.narrow{max-width:640px;margin-top:32px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{min-height:34px;padding:0 16px;font-size:14px;font-weight:500;background:var(--paper);border:2px solid var(--ink);border-radius:99px;cursor:pointer;
+  transition:background-color .12s,transform .12s}
+.chip:hover{background:var(--hi)}
+.chip[aria-pressed=true]{background:var(--ink);color:#fff;font-weight:600}
+.list{list-style:none;margin:16px 0;padding:0}
+.row-link{display:grid;width:100%;padding:0;text-align:left;background:none;border:0;cursor:pointer}
+.row-link .t{justify-self:start;font-weight:600;font-size:18px}
+.row-link .m{color:var(--pencil);font-size:14px}
+.row-link:hover .t,.row-link[aria-current=true] .t{background:linear-gradient(transparent 55%,var(--hi) 55%)}
+/* Ã” tÃ¬m topic vÃ  danh sÃ¡ch chá»n topic */
+.search{width:100%;max-width:420px;margin-top:8px}
+.picker{display:grid;gap:10px;max-width:520px;padding:8px 0 16px}
+.picker .lbl{font-weight:600;font-size:14px}
+.picker input[type=search]{width:100%}
+.tlist{display:grid;gap:8px;max-height:320px;margin:0;padding:4px 6px 8px 0;overflow-y:auto;list-style:none}
+.topt{position:relative;display:block;cursor:pointer}
+.topt input{position:absolute;inset:0;width:100%;height:100%;min-height:0;margin:0;padding:0;opacity:0;cursor:pointer}
+.topt .box{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:46px;padding:0 16px;background:var(--paper);
+  border:2px solid var(--ink);border-radius:10px;transition:background-color .12s}
+.topt:hover .box{background:#f3f6fd}
+.topt input:checked+.box{background:var(--hi);box-shadow:0 3px 0 var(--ink)}
+.topt input:focus-visible+.box{outline:3px solid var(--blue);outline-offset:3px}
+.topt .n{font-weight:700;font-size:17px}
+.topt .c{font-size:13px;color:var(--pencil);white-space:nowrap}
+.topic{display:flex;align-items:center;gap:16px;margin-bottom:12px}
+.topic .row-link{flex:1;min-width:0;width:auto}
+
+.page .by{color:var(--pencil)}
+.page .body{max-width:62ch;margin:0 0 32px;font-size:18px}
+.stamp{max-width:320px;padding:8px 16px;border:2px dashed var(--blue);border-radius:6px;transform:rotate(-1deg);background:var(--paper)}
+.stamp dl{display:grid;grid-template-columns:auto 1fr;gap:0 16px;margin:0}
+.stamp dd{margin:0;font-weight:600}
+table{width:100%;margin:16px 0;border-collapse:collapse}
+th{text-align:left;font-weight:600;font-size:14px;color:var(--pencil);border-bottom:2px solid var(--ink)}
+td,th{padding:0 8px}
+td.w{font-size:20px;font-weight:700}
+td.ops{text-align:right;white-space:nowrap}
+
+.sheet{max-width:640px;margin-top:32px}
+.prog{height:12px;background:var(--paper);border:2px solid var(--ink);border-radius:99px;overflow:hidden}
+.prog i{display:block;height:100%;background:var(--hi)}
+.count{margin-top:8px;font-size:14px;color:var(--pencil)}
+.prompt{margin:32px 0;font-size:44px;line-height:64px;font-weight:700}
+.write{display:flex;gap:12px;align-items:end}
+.write input:hover{box-shadow:none}
+.write input{flex:1;min-height:0;padding:0 4px;font:700 32px/48px var(--serif);background:transparent;border:0;border-bottom:3px solid var(--ink);border-radius:0}
+.answer{display:flex;flex-wrap:wrap;align-items:center;gap:0 16px;margin-bottom:16px}
+.written{margin:0;font-size:32px;line-height:48px;font-weight:700}
+.ok .written{background:linear-gradient(transparent 50%,var(--hi) 50%) no-repeat 0 0/0% 100%;animation:sweep .5s ease-out forwards}
+.bad .written{text-decoration:line-through;text-decoration-color:var(--red);text-decoration-thickness:3px}
+.key{padding:0 6px;background:var(--hi)}
+.foot{margin-top:32px}
+.mark{display:inline-grid;place-items:center;width:128px;height:128px;margin:16px 0;color:var(--red);font:700 56px/1 var(--serif);border:4px solid var(--red);border-radius:50%;transform:rotate(-6deg)}
+tr.bad td{color:var(--red)}
+@keyframes sweep{to{background-size:100% 100%}}
+@media (prefers-reduced-motion:reduce){.ok .written{animation:none;background-size:100% 100%}#toast{transition:none}}
+
+#toast{position:fixed;right:24px;bottom:24px;max-width:360px;padding:4px 16px;line-height:24px;color:#fff;background:var(--ink);border-radius:6px;
+  opacity:0;transform:translateY(8px);transition:.2s;pointer-events:none}
+#toast.show{opacity:1;transform:none}
+#toast.err{background:var(--red)}
+
+@media (max-width:760px){
+  body{padding:0 16px 48px 40px}
+  body::before{left:24px}
+  .cols{grid-template-columns:1fr}
+  .prompt{font-size:34px}
+  /* Tab trÃªn Ä‘iá»‡n thoáº¡i: chá»¯ nhá» hÆ¡n, má»™t dÃ²ng, bá»‘n tab chia Ä‘á»u chiá»u ngang */
+  .tabs{gap:2px}
+  .tabs button{flex:1 1 0;min-width:0;padding:0 2px;font-size:13px;font-weight:600;line-height:38px;text-align:center;white-space:nowrap;border-radius:8px 8px 0 0}
+  .top h1{font-size:30px;line-height:52px}
+}
+@media (max-width:360px){
+  .tabs button{font-size:12px}
+}
+
+
+
+
+=== FILE: vocab.js ===
+'use strict';
+// Tab Tá»« vá»±ng. Ai cÅ©ng xem vÃ  nghe phÃ¡t Ã¢m; thÃªm, sá»­a, xoÃ¡ chá»‰ hiá»‡n vá»›i quáº£n trá»‹ viÃªn.
+async function loadTopics() { S.vocab.topics = await api('GET', '/vocabulary/topics'); }
+async function refreshStudy() { S.vocab.study = await api('GET', '/vocabulary/topics/' + S.vocab.study._id); }
+async function loadVocab() {
+  await loadTopics();
+  if (S.vocab.study) await refreshStudy();
+}
+
+const vocabView = () => (S.vocab.study ? studyView() : topicsView());
+
+function topicsView() {
+  const items = S.vocab.topics.map((t) => `<li class="topic" data-name="${esc(fold(t.name))}">
+      <button class="row-link" data-act="v-open" data-id="${esc(t._id)}"><span class="t serif">${esc(t.name)}</span><span class="m">${t.wordCount} tá»«</span></button>
+      <button class="btn ghost" data-act="v-quiz" data-id="${esc(t._id)}"${t.wordCount ? '' : ' disabled'}>LÃ m quiz</button>
+    </li>`).join('');
+  const empty = `<li class="empty">ChÆ°a cÃ³ topic nÃ o.${isAdmin() ? ' Táº¡o topic Ä‘áº§u tiÃªn á»Ÿ bÃªn dÆ°á»›i.' : ''}</li>`;
+  const create = isAdmin()
+    ? `<form data-form="v-topic" class="stack"><label>TÃªn topic má»›i<input name="name" required maxlength="100"></label><button class="btn">Táº¡o topic</button></form>` : '';
+  return `<section class="narrow">
+    <h2>Chá»§ Ä‘á» tá»« vá»±ng</h2>
+    ${items ? `<label class="sr" for="vsearch">TÃ¬m topic</label>
+    <input id="vsearch" class="search" type="search" placeholder="TÃ¬m topic, gÃµ khÃ´ng dáº¥u cÅ©ng Ä‘Æ°á»£c" autocomplete="off" data-filter="#vlist" data-none="#vnone">` : ''}
+    <ul class="list" id="vlist">${items || empty}</ul>
+    <p id="vnone" class="empty" hidden>KhÃ´ng cÃ³ topic nÃ o khá»›p. Thá»­ gÃµ ngáº¯n hÆ¡n.</p>
+    ${create}
+  </section>`;
+}
+
+function wordRow(w) {
+  const tools = isAdmin()
+    ? `<button class="link" data-act="v-edit-word" data-id="${esc(w._id)}">Sá»­a</button>
+       <button class="link danger" data-act="v-del-word" data-id="${esc(w._id)}" data-confirm="Báº¥m láº§n ná»¯a Ä‘á»ƒ xoÃ¡">XoÃ¡</button>` : '';
+  return `<tr><td class="w serif">${esc(w.word)}</td><td>${esc(w.meaning)}</td><td class="ops">${speakBtn(w.word, w.audio)}${tools}</td></tr>`;
+}
+function editRow(w) {
+  return `<tr><td colspan="3"><form data-form="v-word-save" class="inline">
+    <input name="word" value="${esc(w.word)}" required maxlength="100" aria-label="Tá»« tiáº¿ng Anh" data-autofocus>
+    <input name="meaning" value="${esc(w.meaning)}" required maxlength="300" aria-label="NghÄ©a tiáº¿ng Viá»‡t">
+    <button class="btn">LÆ°u tá»«</button><button type="button" class="link" data-act="v-cancel">Huá»·</button></form></td></tr>`;
+}
+
+function studyView() {
+  const v = S.vocab, t = v.study;
+  const head = v.editTopic
+    ? `<form data-form="v-rename" class="inline"><label class="sr" for="tn">TÃªn topic</label><input id="tn" name="name" value="${esc(t.name)}" required maxlength="100" data-autofocus><button class="btn">LÆ°u tÃªn</button><button type="button" class="link" data-act="v-cancel">Huá»·</button></form>`
+    : `<h2>${esc(t.name)}</h2>${isAdmin() ? `<p><button class="link" data-act="v-edit-topic">Äá»•i tÃªn</button><button class="link danger" data-act="v-del-topic" data-confirm="Báº¥m láº§n ná»¯a Ä‘á»ƒ xoÃ¡ cáº£ topic">XoÃ¡ topic</button></p>` : ''}`;
+  const rows = t.words.map((w) => (v.editWord === w._id ? editRow(w) : wordRow(w))).join('');
+  const add = isAdmin()
+    ? `<form data-form="v-word-add" class="inline">
+      <label class="sr" for="nw">Tá»« tiáº¿ng Anh</label><input id="nw" name="word" placeholder="Tá»« tiáº¿ng Anh" required maxlength="100">
+      <label class="sr" for="nm">NghÄ©a tiáº¿ng Viá»‡t</label><input id="nm" name="meaning" placeholder="NghÄ©a tiáº¿ng Viá»‡t" required maxlength="300">
+      <button class="btn">ThÃªm tá»«</button>
+    </form>` : '';
+  return `<section class="narrow">
+    <p><button class="link" data-act="v-back">Quay láº¡i danh sÃ¡ch topic</button></p>
+    ${head}
+    <table><thead><tr><th scope="col">Tá»«</th><th scope="col">NghÄ©a</th><th scope="col"><span class="sr">Thao tÃ¡c</span></th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="3" class="empty">Topic nÃ y chÆ°a cÃ³ tá»« nÃ o.${isAdmin() ? ' ThÃªm tá»« Ä‘áº§u tiÃªn á»Ÿ bÃªn dÆ°á»›i.' : ''}</td></tr>`}</tbody></table>
+    ${add}
+  </section>`;
+}
+
+actions['v-open'] = (el) => run(async () => {
+  S.vocab.study = await api('GET', '/vocabulary/topics/' + el.dataset.id);
+  S.vocab.editTopic = false; S.vocab.editWord = null;
+  render();
+});
+actions['v-back'] = () => run(async () => { S.vocab.study = null; await loadTopics(); render(); });
+actions['v-quiz'] = (el) => { S.quizTopic = el.dataset.id; S.quiz = null; actions.tab({ dataset: { tab: 'quiz' } }); };
+actions['v-edit-topic'] = () => { S.vocab.editTopic = true; render(); };
+actions['v-edit-word'] = (el) => { S.vocab.editWord = el.dataset.id; render(); };
+actions['v-cancel'] = () => { S.vocab.editTopic = false; S.vocab.editWord = null; render(); };
+actions['v-del-topic'] = () => run(async () => {
+  await api('DELETE', '/vocabulary/topics/' + S.vocab.study._id);
+  S.vocab.study = null; toast('ÄÃ£ xoÃ¡ topic'); await loadTopics(); render();
+});
+actions['v-del-word'] = (el) => run(async () => {
+  await api('DELETE', `/vocabulary/topics/${S.vocab.study._id}/words/${el.dataset.id}`);
+  toast('ÄÃ£ xoÃ¡ tá»«'); await refreshStudy(); render();
+});
+
+forms['v-topic'] = async (d) => { await api('POST', '/vocabulary/topics', { name: d.name }); toast('ÄÃ£ táº¡o topic'); await loadTopics(); render(); };
+forms['v-rename'] = async (d) => {
+  await api('PUT', '/vocabulary/topics/' + S.vocab.study._id, { name: d.name });
+  S.vocab.editTopic = false; toast('ÄÃ£ Ä‘á»•i tÃªn topic'); await refreshStudy(); render();
+};
+forms['v-word-add'] = async (d) => {
+  await api('POST', `/vocabulary/topics/${S.vocab.study._id}/words`, d);
+  toast('ÄÃ£ thÃªm tá»«'); await refreshStudy(); render();
+};
+forms['v-word-save'] = async (d) => {
+  await api('PUT', `/vocabulary/topics/${S.vocab.study._id}/words/${S.vocab.editWord}`, d);
+  S.vocab.editWord = null; toast('ÄÃ£ lÆ°u tá»«'); await refreshStudy(); render();
+};
+
+
+
+

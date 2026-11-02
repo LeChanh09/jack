@@ -1,0 +1,1629 @@
+﻿=== FILE: app.js ===
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+const config = require('./config');
+const routes = require('./routes');
+const { notFound, errorHandler } = require('./middlewares/error');
+
+const app = express();
+app.disable('x-powered-by');
+// Äá»©ng sau proxy cá»§a Vercel: láº¥y IP tháº­t cá»§a ngÆ°á»i dÃ¹ng tá»« X-Forwarded-For (dÃ¹ng cho captcha vÃ  giá»›i háº¡n truy cáº­p)
+app.set('trust proxy', 1);
+
+// Header báº£o máº­t cÆ¡ báº£n. ChÆ°a Ä‘áº·t Content-Security-Policy vÃ¬ trang dÃ¹ng Google Fonts vÃ  script Turnstile cá»§a Cloudflare,
+// cáº§n khai bÃ¡o tá»«ng nguá»“n cáº©n tháº­n trÆ°á»›c khi báº­t.
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  if (config.isProd) res.setHeader('Strict-Transport-Security', 'max-age=15552000');
+  next();
+});
+
+// Khi cháº¡y tháº­t: chá»‰ cho cÃ¡c tÃªn miá»n trong CORS_ORIGIN gá»i API tá»« trÃ¬nh duyá»‡t.
+// Frontend vÃ  API cÃ¹ng má»™t tÃªn miá»n (nhÆ° trÃªn Vercel) thÃ¬ khÃ´ng cáº§n Ä‘áº·t gÃ¬, cÃ¹ng nguá»“n váº«n hoáº¡t Ä‘á»™ng.
+app.use(cors(config.isProd ? { origin: config.corsOrigins.length ? config.corsOrigins : false } : undefined));
+app.use(express.json({ limit: '100kb' }));
+// Giao diá»‡n demo: http://localhost:<PORT>/ (thÆ° má»¥c public). TrÃªn Vercel, thÆ° má»¥c public do CDN phá»¥c vá»¥.
+app.use(express.static(path.join(__dirname, '..', 'public')));
+
+app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+app.use('/api', routes);
+
+app.use(notFound);
+app.use(errorHandler);
+
+module.exports = app;
+
+
+
+
+=== FILE: server.js ===
+const app = require('./app');
+const config = require('./config');
+const connectDB = require('./config/db');
+
+connectDB()
+  .then(() => {
+    app.listen(config.port, () => {
+      console.log(`Server cháº¡y táº¡i http://localhost:${config.port}`);
+    });
+  })
+  .catch((err) => {
+    console.error('KhÃ´ng káº¿t ná»‘i Ä‘Æ°á»£c MongoDB:', err.message);
+    process.exit(1);
+  });
+
+
+
+
+=== FILE: db.js ===
+const mongoose = require('mongoose');
+const config = require('./index');
+
+// Giá»¯ má»™t káº¿t ná»‘i dÃ¹ng láº¡i giá»¯a cÃ¡c láº§n gá»i. TrÃªn Vercel (serverless) má»—i láº§n "khá»Ÿi Ä‘á»™ng nguá»™i"
+// cháº¡y láº¡i module, cÃ²n cÃ¡c láº§n gá»i sau trÃªn cÃ¹ng instance dÃ¹ng láº¡i káº¿t ná»‘i nÃ y nÃªn khÃ´ng má»Ÿ káº¿t ná»‘i má»›i liÃªn tá»¥c.
+const cache = global.__mongoose || (global.__mongoose = { conn: null, promise: null });
+
+module.exports = async function connectDB() {
+  if (cache.conn) return cache.conn;
+  if (!cache.promise) {
+    cache.promise = mongoose
+      .connect(config.mongoUri, { serverSelectionTimeoutMS: 8000, maxPoolSize: 5 })
+      .catch((err) => {
+        cache.promise = null; // láº§n sau thá»­ káº¿t ná»‘i láº¡i thay vÃ¬ giá»¯ lá»—i cÅ©
+        throw err;
+      });
+  }
+  cache.conn = await cache.promise;
+  console.log('MongoDB connected');
+  return cache.conn;
+};
+
+
+
+
+=== FILE: index.js ===
+require('dotenv').config();
+
+const env = process.env;
+const isProd = env.NODE_ENV === 'production';
+const bool = (v, def = false) =>
+  v === undefined || v === '' ? def : ['1', 'true', 'yes', 'on'].includes(String(v).trim().toLowerCase());
+const num = (v, def) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : def);
+
+if (isProd && !env.JWT_SECRET) {
+  throw new Error('Thiáº¿u JWT_SECRET trong mÃ´i trÆ°á»ng production');
+}
+
+const config = {
+  isProd,
+  // Giá»›i háº¡n sá»‘ láº§n gá»i theo IP cho Ä‘Äƒng nháº­p, Ä‘Äƒng kÃ½, OTP, má»Ÿ quiz. Chá»‰ táº¯t khi thá»­ nghiá»‡m: RATE_LIMIT_ENABLED=false
+  rateLimitEnabled: bool(env.RATE_LIMIT_ENABLED, true),
+  port: env.PORT || 3000,
+  mongoUri: env.MONGO_URI || 'mongodb://127.0.0.1:27017/webtienganh',
+  // CÃ¡c tÃªn miá»n Ä‘Æ°á»£c phÃ©p gá»i API tá»« trÃ¬nh duyá»‡t khi cháº¡y tháº­t (cÃ¡ch nhau báº±ng dáº¥u pháº©y). Äá»ƒ trá»‘ng = chá»‰ cÃ¹ng nguá»“n.
+  corsOrigins: (env.CORS_ORIGIN || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+  // Email Ä‘Æ°á»£c cáº¥p quyá»n quáº£n trá»‹ khi Ä‘Äƒng kÃ½ (cÃ¡ch nhau báº±ng dáº¥u pháº©y).
+  // Khi phÃ¡t triá»ƒn, ngÆ°á»i Ä‘Äƒng kÃ½ Ä‘áº§u tiÃªn cÅ©ng lÃ  quáº£n trá»‹ viÃªn. Khi cháº¡y tháº­t thÃ¬ khÃ´ng (xem controllers/auth.js).
+  adminEmails: (env.ADMIN_EMAILS || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
+  // KhoÃ¡ kÃ½ token. Máº·c Ä‘á»‹nh chá»‰ dÃ¹ng khi phÃ¡t triá»ƒn trÃªn mÃ¡y cÃ¡ nhÃ¢n.
+  jwtSecret: env.JWT_SECRET || 'dev-secret-change-in-production',
+  // Thá»i gian sá»‘ng cá»§a 1 phiÃªn lÃ m quiz tá»« vá»±ng (phÃºt)
+  quizSessionTtlMinutes: 120,
+  // Nguá»“n audio phÃ¡t Ã¢m (Cambridge, giá»ng Má»¹)
+  audioBaseUrl:
+    'https://dictionary.cambridge.org/vi/media/english-chinese-simplified/us_pron',
+
+  // Gá»­i email qua SMTP (dÃ¹ng cho mÃ£ OTP). Äá»ƒ trá»‘ng SMTP_HOST thÃ¬ khi phÃ¡t triá»ƒn mÃ£ OTP chá»‰ in ra console.
+  mail: {
+    host: env.SMTP_HOST || '',
+    port: num(env.SMTP_PORT, 587),
+    secure: bool(env.SMTP_SECURE), // true khi dÃ¹ng cá»•ng 465
+    user: env.SMTP_USER || '',
+    pass: env.SMTP_PASS || '',
+    from: env.MAIL_FROM || env.SMTP_USER || 'no-reply@localhost',
+  },
+  // XÃ¡c thá»±c email báº±ng mÃ£ OTP khi Ä‘Äƒng kÃ½
+  otp: {
+    enabled: bool(env.OTP_ENABLED),
+    ttlMinutes: num(env.OTP_TTL_MINUTES, 10),
+    maxAttempts: num(env.OTP_MAX_ATTEMPTS, 5),
+    resendSeconds: num(env.OTP_RESEND_SECONDS, 60),
+  },
+  // Captcha Cloudflare Turnstile á»Ÿ form Ä‘Äƒng kÃ½
+  turnstile: {
+    enabled: bool(env.TURNSTILE_ENABLED),
+    siteKey: env.TURNSTILE_SITE_KEY || '',
+    secretKey: env.TURNSTILE_SECRET_KEY || '',
+  },
+};
+
+if (config.turnstile.enabled && (!config.turnstile.siteKey || !config.turnstile.secretKey)) {
+  throw new Error('Báº­t TURNSTILE_ENABLED thÃ¬ cáº§n cÃ³ cáº£ TURNSTILE_SITE_KEY vÃ  TURNSTILE_SECRET_KEY');
+}
+if (config.otp.enabled && isProd && !config.mail.host) {
+  throw new Error('Báº­t OTP_ENABLED á»Ÿ production thÃ¬ cáº§n cáº¥u hÃ¬nh SMTP_HOST');
+}
+
+module.exports = config;
+
+
+
+
+=== FILE: auth.js ===
+const User = require('../models/User');
+const PendingRegistration = require('../models/PendingRegistration');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const HttpError = require('../utils/httpError');
+const asyncHandler = require('../utils/asyncHandler');
+const { requireString } = require('../utils/validate');
+const { effectiveStreak } = require('../utils/streak');
+const { makeOtp, hashOtp, safeEqual } = require('../utils/otp');
+const { sendOtpMail } = require('../utils/mailer');
+const { verifyTurnstile } = require('../utils/turnstile');
+const config = require('../config');
+
+const MAX_SENDS = 5; // tá»‘i Ä‘a sá»‘ láº§n gá»­i mÃ£ cho má»™t lÆ°á»£t Ä‘Äƒng kÃ½
+
+const sign = (user) =>
+  jwt.sign({ id: user._id }, config.jwtSecret, { expiresIn: '30d' });
+
+const publicUser = (user) => ({
+  id: user._id,
+  nickname: user.nickname,
+  email: user.email,
+  role: user.role,
+  ...effectiveStreak(user),
+});
+
+// GET /api/auth/config  -> frontend biáº¿t cÃ³ cáº§n hiá»‡n Ã´ captcha / bÆ°á»›c nháº­p OTP khÃ´ng
+exports.publicConfig = (req, res) => {
+  res.json({
+    otpEnabled: config.otp.enabled,
+    otpTtlMinutes: config.otp.ttlMinutes,
+    otpResendSeconds: config.otp.resendSeconds,
+    turnstileEnabled: config.turnstile.enabled,
+    turnstileSiteKey: config.turnstile.enabled ? config.turnstile.siteKey : '',
+  });
+};
+
+// Táº¡o tÃ i khoáº£n tháº­t. NgÆ°á»i Ä‘Äƒng kÃ½ Ä‘áº§u tiÃªn hoáº·c email trong ADMIN_EMAILS lÃ  quáº£n trá»‹ viÃªn.
+async function createUser({ nickname, email, passwordHash }) {
+  // Khi cháº¡y tháº­t khÃ´ng cho "ngÆ°á»i Ä‘Äƒng kÃ½ Ä‘áº§u tiÃªn" thÃ nh quáº£n trá»‹ viÃªn, vÃ¬ ai vÃ o trÆ°á»›c cÅ©ng chiáº¿m Ä‘Æ°á»£c quyá»n.
+  // Email trong ADMIN_EMAILS chá»‰ Ä‘Æ°á»£c cáº¥p quyá»n khi báº­t OTP, tá»©c lÃ  ngÆ°á»i Ä‘Äƒng kÃ½ Ä‘Ã£ chá»©ng minh sá»Ÿ há»¯u email Ä‘Ã³.
+  const firstUserIsAdmin = !config.isProd && (await User.estimatedDocumentCount()) === 0;
+  const listed = config.adminEmails.includes(email) && (!config.isProd || config.otp.enabled);
+  const role = firstUserIsAdmin || listed ? 'admin' : 'user';
+  return User.create({ nickname, email, password: passwordHash, role });
+}
+
+function readEmail(body) {
+  const email = requireString(body.email, 'email').toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new HttpError(400, 'Email khÃ´ng há»£p lá»‡');
+  }
+  return email;
+}
+
+// Sinh mÃ£ má»›i, lÆ°u báº£n bÄƒm, gá»­i email. Gá»­i lá»—i thÃ¬ tráº£ vá» false Ä‘á»ƒ bÃªn gá»i dá»n dáº¹p.
+async function issueOtp(email, nickname) {
+  const code = makeOtp();
+  const now = new Date();
+  try {
+    await sendOtpMail({ to: email, nickname, code });
+  } catch (e) {
+    console.error('Gá»­i email OTP lá»—i:', e.message);
+    return null;
+  }
+  return {
+    otpHash: hashOtp(email, code),
+    lastSentAt: now,
+    expiresAt: new Date(now.getTime() + config.otp.ttlMinutes * 60000),
+  };
+}
+
+const waitSeconds = (p) =>
+  Math.ceil((config.otp.resendSeconds * 1000 - (Date.now() - p.lastSentAt.getTime())) / 1000);
+
+// POST /api/auth/register  { nickname, email, password, turnstileToken? }
+// Táº¯t OTP: táº¡o tÃ i khoáº£n vÃ  tráº£ token ngay. Báº­t OTP: gá»­i mÃ£ vá» email, tráº£ 202 vÃ  chá» /verify-otp.
+exports.register = asyncHandler(async (req, res) => {
+  const nickname = requireString(req.body.nickname, 'nickname');
+  const email = readEmail(req.body);
+  const password = requireString(req.body.password, 'password');
+
+  if (password.length < 6) {
+    throw new HttpError(400, 'Máº­t kháº©u pháº£i cÃ³ Ã­t nháº¥t 6 kÃ½ tá»±');
+  }
+  // bcrypt chá»‰ dÃ¹ng 72 byte Ä‘áº§u, nÃªn cháº·n máº­t kháº©u dÃ i hÆ¡n Ä‘á»ƒ khÃ´ng bá»‹ cáº¯t Ã¢m tháº§m
+  if (Buffer.byteLength(password) > 72) {
+    throw new HttpError(400, 'Máº­t kháº©u tá»‘i Ä‘a 72 kÃ½ tá»±');
+  }
+
+  // Captcha trÆ°á»›c má»i viá»‡c tá»‘n tÃ i nguyÃªn (hash máº­t kháº©u, gá»­i email)
+  await verifyTurnstile(req.body.turnstileToken, req.ip);
+
+  if (await User.exists({ email })) {
+    throw new HttpError(409, 'Email Ä‘Ã£ Ä‘Æ°á»£c Ä‘Äƒng kÃ½');
+  }
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  if (!config.otp.enabled) {
+    const user = await createUser({ nickname, email, passwordHash });
+    return res.status(201).json({ token: sign(user), user: publicUser(user) });
+  }
+
+  // Äang cÃ³ lÆ°á»£t Ä‘Äƒng kÃ½ chá» xÃ¡c thá»±c cho email nÃ y thÃ¬ KHÃ”NG ghi Ä‘Ã¨ nhÃ¢n danh ngÆ°á»i khÃ¡c:
+  // náº¿u cho ghi Ä‘Ã¨, káº» láº¡ cÃ³ thá»ƒ Ä‘áº·t máº­t kháº©u cá»§a há» rá»“i ngÆ°á»i tháº­t nháº­p mÃ£ vá»«a nháº­n sáº½ táº¡o ra
+  // tÃ i khoáº£n mang máº­t kháº©u cá»§a káº» Ä‘Ã³. NgÆ°á»i Ä‘Äƒng kÃ½ tháº­t dÃ¹ng "Gá»­i láº¡i mÃ£" hoáº·c chá» háº¿t háº¡n.
+  const existing = await PendingRegistration.findOne({ email });
+  if (existing && existing.expiresAt.getTime() > Date.now()) {
+    const mins = Math.max(1, Math.ceil((existing.expiresAt.getTime() - Date.now()) / 60000));
+    throw new HttpError(
+      409,
+      `Email nÃ y Ä‘ang chá» xÃ¡c thá»±c. HÃ£y kiá»ƒm tra há»™p thÆ° Ä‘á»ƒ láº¥y mÃ£, hoáº·c thá»­ Ä‘Äƒng kÃ½ láº¡i sau ${mins} phÃºt`
+    );
+  }
+  if (existing) await PendingRegistration.deleteOne({ _id: existing._id });
+
+  const sent = await issueOtp(email, nickname);
+  if (!sent) {
+    throw new HttpError(502, 'KhÃ´ng gá»­i Ä‘Æ°á»£c email xÃ¡c thá»±c. Kiá»ƒm tra Ä‘á»‹a chá»‰ email hoáº·c thá»­ láº¡i sau');
+  }
+  // Hai request Ä‘Äƒng kÃ½ cÃ¹ng lÃºc: index duy nháº¥t theo email khiáº¿n request Ä‘áº¿n sau bá»‹ tá»« chá»‘i (409)
+  await PendingRegistration.create({ email, nickname, passwordHash, sends: 1, ...sent });
+  res.status(202).json({
+    otpRequired: true,
+    email,
+    expiresInMinutes: config.otp.ttlMinutes,
+    resendSeconds: config.otp.resendSeconds,
+  });
+});
+
+// POST /api/auth/verify-otp  { email, code }
+exports.verifyOtp = asyncHandler(async (req, res) => {
+  if (!config.otp.enabled) throw new HttpError(400, 'XÃ¡c thá»±c OTP Ä‘ang táº¯t');
+  const email = readEmail(req.body);
+  const code = typeof req.body.code === 'string' ? req.body.code.trim() : '';
+  if (!/^\d{6}$/.test(code)) throw new HttpError(400, 'MÃ£ gá»“m 6 chá»¯ sá»‘');
+
+  const bad = () => new HttpError(400, 'MÃ£ khÃ´ng Ä‘Ãºng hoáº·c Ä‘Ã£ háº¿t háº¡n. HÃ£y gá»­i láº¡i mÃ£ má»›i');
+
+  // TÄƒng sá»‘ láº§n thá»­ trÆ°á»›c khi so sÃ¡nh, vÃ  chá»‰ khi cÃ²n lÆ°á»£t: nhiá»u request song song cÅ©ng khÃ´ng vÆ°á»£t giá»›i háº¡n
+  const p = await PendingRegistration.findOneAndUpdate(
+    { email, attempts: { $lt: config.otp.maxAttempts } },
+    { $inc: { attempts: 1 } },
+    { new: true }
+  );
+  if (!p) {
+    if (await PendingRegistration.exists({ email })) {
+      await PendingRegistration.deleteOne({ email });
+      throw new HttpError(429, 'Nháº­p sai quÃ¡ nhiá»u láº§n. HÃ£y Ä‘Äƒng kÃ½ láº¡i');
+    }
+    throw bad();
+  }
+  if (p.expiresAt.getTime() < Date.now()) {
+    await PendingRegistration.deleteOne({ _id: p._id });
+    throw bad();
+  }
+  if (!safeEqual(hashOtp(email, code), p.otpHash)) {
+    const left = config.otp.maxAttempts - p.attempts;
+    throw new HttpError(400, left > 0 ? `MÃ£ khÃ´ng Ä‘Ãºng. CÃ²n ${left} láº§n thá»­` : 'MÃ£ khÃ´ng Ä‘Ãºng. HÃ£y Ä‘Äƒng kÃ½ láº¡i');
+  }
+
+  // XoÃ¡ báº£n ghi chá» nguyÃªn tá»­: chá»‰ má»™t request Ä‘Æ°á»£c phÃ©p táº¡o tÃ i khoáº£n
+  const taken = await PendingRegistration.findOneAndDelete({ _id: p._id });
+  if (!taken) throw bad();
+  const user = await createUser({ nickname: p.nickname, email, passwordHash: p.passwordHash });
+  res.status(201).json({ token: sign(user), user: publicUser(user) });
+});
+
+// POST /api/auth/resend-otp  { email }
+exports.resendOtp = asyncHandler(async (req, res) => {
+  if (!config.otp.enabled) throw new HttpError(400, 'XÃ¡c thá»±c OTP Ä‘ang táº¯t');
+  const email = readEmail(req.body);
+  const p = await PendingRegistration.findOne({ email });
+  if (!p) throw new HttpError(404, 'KhÃ´ng tÃ¬m tháº¥y Ä‘Äƒng kÃ½ Ä‘ang chá». HÃ£y Ä‘Äƒng kÃ½ láº¡i');
+  if (p.sends >= MAX_SENDS) {
+    throw new HttpError(429, 'ÄÃ£ gá»­i mÃ£ quÃ¡ nhiá»u láº§n cho email nÃ y, hÃ£y thá»­ láº¡i sau Ã­t phÃºt');
+  }
+  if (waitSeconds(p) > 0) {
+    throw new HttpError(429, `HÃ£y Ä‘á»£i ${waitSeconds(p)} giÃ¢y rá»“i gá»­i láº¡i`);
+  }
+  const sent = await issueOtp(email, p.nickname);
+  if (!sent) throw new HttpError(502, 'KhÃ´ng gá»­i Ä‘Æ°á»£c email. HÃ£y thá»­ láº¡i sau');
+  await PendingRegistration.updateOne(
+    { _id: p._id },
+    { $set: { attempts: 0, ...sent }, $inc: { sends: 1 } }
+  );
+  res.json({
+    otpRequired: true,
+    email,
+    expiresInMinutes: config.otp.ttlMinutes,
+    resendSeconds: config.otp.resendSeconds,
+  });
+});
+
+// POST /api/auth/login  { email, password }
+exports.login = asyncHandler(async (req, res) => {
+  const email = requireString(req.body.email, 'email').toLowerCase();
+  const password = requireString(req.body.password, 'password');
+
+  const user = await User.findOne({ email }).select('+password');
+  if (!user || !(await bcrypt.compare(password, user.password))) {
+    throw new HttpError(401, 'Email hoáº·c máº­t kháº©u khÃ´ng Ä‘Ãºng');
+  }
+  res.json({ token: sign(user), user: publicUser(user) });
+});
+
+// GET /api/auth/me  (header Authorization: Bearer <token>)
+exports.me = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.userId);
+  if (!user) throw new HttpError(401, 'TÃ i khoáº£n khÃ´ng cÃ²n tá»“n táº¡i');
+  res.json({ ...publicUser(user), timeActive: user.timeActive });
+});
+
+
+
+
+=== FILE: reading.js ===
+const Topic = require('../models/Topic');
+const Reading = require('../models/Reading');
+const Quiz = require('../models/Quiz');
+const HttpError = require('../utils/httpError');
+const asyncHandler = require('../utils/asyncHandler');
+const { requireString, requireId } = require('../utils/validate');
+const { touchStreak } = require('../utils/streak');
+
+// GET /api/reading/topics
+exports.listTopics = asyncHandler(async (req, res) => {
+  const topics = await Topic.find({ type: 'reading' }).sort('name').lean();
+  res.json(topics);
+});
+
+// POST /api/reading/topics  { name }
+exports.createTopic = asyncHandler(async (req, res) => {
+  const name = requireString(req.body.name, 'name');
+  const topic = await Topic.create({ name, type: 'reading' });
+  res.status(201).json(topic);
+});
+
+// PUT /api/reading/topics/:topicId  { name }
+exports.updateTopic = asyncHandler(async (req, res) => {
+  const name = requireString(req.body.name, 'name');
+  const topic = await Topic.findOneAndUpdate(
+    { _id: req.params.topicId, type: 'reading' },
+    { $set: { name } },
+    { new: true, runValidators: true }
+  );
+  if (!topic) throw new HttpError(404, 'KhÃ´ng tÃ¬m tháº¥y topic reading');
+  res.json(topic);
+});
+
+// DELETE /api/reading/topics/:topicId  (xoÃ¡ kÃ¨m bÃ i Ä‘á»c vÃ  báº£n ghi quiz cá»§a topic)
+exports.deleteTopic = asyncHandler(async (req, res) => {
+  const topic = await Topic.findOne({ _id: req.params.topicId, type: 'reading' });
+  if (!topic) throw new HttpError(404, 'KhÃ´ng tÃ¬m tháº¥y topic reading');
+  await Promise.all([
+    Reading.deleteMany({ topic: topic._id }),
+    Quiz.deleteMany({ topic: topic._id }),
+  ]);
+  await Topic.deleteOne({ _id: topic._id });
+  res.status(204).end();
+});
+
+// GET /api/reading?topic=<topicId>  (khÃ´ng cÃ³ content, chá»‰ danh sÃ¡ch)
+exports.listReadings = asyncHandler(async (req, res) => {
+  const filter = {};
+  if (req.query.topic !== undefined) {
+    filter.topic = requireId(req.query.topic, 'topic');
+  }
+  const readings = await Reading.find(filter)
+    .select('title topic createdAt')
+    .sort('-createdAt')
+    .lean();
+  res.json(readings);
+});
+
+// POST /api/reading  { topic, title, content }
+exports.createReading = asyncHandler(async (req, res) => {
+  const topicId = requireId(req.body.topic, 'topic');
+  const title = requireString(req.body.title, 'title');
+  const content = requireString(req.body.content, 'content');
+
+  const topic = await Topic.exists({ _id: topicId, type: 'reading' });
+  if (!topic) throw new HttpError(404, 'KhÃ´ng tÃ¬m tháº¥y topic reading');
+
+  const reading = await Reading.create({ topic: topicId, title, content });
+  res.status(201).json(reading);
+});
+
+// PUT /api/reading/:id  { topic?, title?, content? }
+exports.updateReading = asyncHandler(async (req, res) => {
+  const update = {};
+  if (req.body.title !== undefined) update.title = requireString(req.body.title, 'title');
+  if (req.body.content !== undefined) update.content = requireString(req.body.content, 'content');
+  if (req.body.topic !== undefined) {
+    const topicId = requireId(req.body.topic, 'topic');
+    if (!(await Topic.exists({ _id: topicId, type: 'reading' }))) {
+      throw new HttpError(404, 'KhÃ´ng tÃ¬m tháº¥y topic reading');
+    }
+    update.topic = topicId;
+  }
+  if (!Object.keys(update).length) {
+    throw new HttpError(400, 'KhÃ´ng cÃ³ dá»¯ liá»‡u Ä‘á»ƒ cáº­p nháº­t');
+  }
+  const reading = await Reading.findByIdAndUpdate(
+    req.params.id,
+    { $set: update },
+    { new: true, runValidators: true }
+  );
+  if (!reading) throw new HttpError(404, 'KhÃ´ng tÃ¬m tháº¥y bÃ i Ä‘á»c');
+  // Giá»¯ báº£n ghi quiz khá»›p vá»›i topic má»›i cá»§a bÃ i
+  if (update.topic) {
+    await Quiz.updateOne({ reading: reading._id }, { $set: { topic: update.topic } });
+  }
+  res.json(reading);
+});
+
+// DELETE /api/reading/:id
+exports.deleteReading = asyncHandler(async (req, res) => {
+  const result = await Reading.deleteOne({ _id: req.params.id });
+  if (!result.deletedCount) throw new HttpError(404, 'KhÃ´ng tÃ¬m tháº¥y bÃ i Ä‘á»c');
+  await Quiz.deleteOne({ reading: req.params.id });
+  res.status(204).end();
+});
+
+// GET /api/reading/:id
+// Tráº£ bÃ i Ä‘á»c + upsert vÃ o collection quiz (kÃ¨m topic). CÃ³ Ä‘Äƒng nháº­p thÃ¬ tÃ­nh vÃ o chuá»—i ngÃ y há»c.
+exports.getReading = asyncHandler(async (req, res) => {
+  const reading = await Reading.findById(req.params.id).lean();
+  if (!reading) throw new HttpError(404, 'KhÃ´ng tÃ¬m tháº¥y bÃ i Ä‘á»c');
+
+  const [topic, quiz, streak] = await Promise.all([
+    Topic.findById(reading.topic).lean(),
+    Quiz.findOneAndUpdate(
+      { reading: reading._id },
+      {
+        $set: { topic: reading.topic },
+        $setOnInsert: { type: 'reading' },
+        $inc: { views: 1 },
+      },
+      { upsert: true, new: true }
+    ).lean(),
+    req.userId ? touchStreak(req.userId) : null,
+  ]);
+
+  res.json({ reading, topic, quiz, streak });
+});
+
+
+
+
+=== FILE: streak.js ===
+const User = require('../models/User');
+const HttpError = require('../utils/httpError');
+const asyncHandler = require('../utils/asyncHandler');
+const { vnDate } = require('../utils/date');
+const { effectiveStreak, touchStreak } = require('../utils/streak');
+
+// GET /api/streak  -> dá»¯ liá»‡u cho trang theo dÃµi chuá»—i ngÃ y
+exports.getStreak = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.userId).select('+activeDays');
+  if (!user) throw new HttpError(404, 'KhÃ´ng tÃ¬m tháº¥y user');
+
+  const today = vnDate();
+  res.json({
+    today,
+    ...effectiveStreak(user),
+    lastActiveDate: user.lastActiveDate,
+    todayDone: user.lastActiveDate === today,
+    activeDays: user.activeDays,
+  });
+});
+
+// POST /api/streak/ping  (ghi nháº­n thá»§ cÃ´ng; quiz vÃ  Ä‘á»c bÃ i Ä‘Ã£ tá»± gá»i á»Ÿ server)
+exports.ping = asyncHandler(async (req, res) => {
+  const streak = await touchStreak(req.userId);
+  if (!streak) throw new HttpError(404, 'KhÃ´ng tÃ¬m tháº¥y user');
+  res.json(streak);
+});
+
+
+
+
+=== FILE: vocabulary.js ===
+const Topic = require('../models/Topic');
+const Vocabulary = require('../models/Vocabulary');
+const UserTopic = require('../models/UserTopic');
+const QuizSession = require('../models/QuizSession');
+const HttpError = require('../utils/httpError');
+const asyncHandler = require('../utils/asyncHandler');
+const { requireString } = require('../utils/validate');
+
+async function findTopic(id) {
+  const topic = await Topic.findOne({ _id: id, type: 'vocabulary' }).lean();
+  if (!topic) throw new HttpError(404, 'KhÃ´ng tÃ¬m tháº¥y topic tá»« vá»±ng');
+  return topic;
+}
+
+// GET /api/vocabulary/topics
+exports.listTopics = asyncHandler(async (req, res) => {
+  const [topics, counts] = await Promise.all([
+    Topic.find({ type: 'vocabulary' }).sort('name').lean(),
+    Vocabulary.aggregate([{ $group: { _id: '$topic', count: { $sum: 1 } } }]),
+  ]);
+  const countMap = new Map(counts.map((c) => [String(c._id), c.count]));
+  res.json(
+    topics.map((t) => ({ ...t, wordCount: countMap.get(String(t._id)) || 0 }))
+  );
+});
+
+// GET /api/vocabulary/topics/:topicId  (cháº¿ Ä‘á»™ há»c: cÃ³ word, meaning, audio)
+exports.getTopic = asyncHandler(async (req, res) => {
+  const topic = await findTopic(req.params.topicId);
+  const words = await Vocabulary.find({ topic: topic._id }).sort('word');
+  res.json({ ...topic, words });
+});
+
+// POST /api/vocabulary/topics  { name }
+exports.createTopic = asyncHandler(async (req, res) => {
+  const name = requireString(req.body.name, 'name');
+  const topic = await Topic.create({ name, type: 'vocabulary' });
+  res.status(201).json(topic);
+});
+
+// PUT /api/vocabulary/topics/:topicId  { name }
+exports.updateTopic = asyncHandler(async (req, res) => {
+  const name = requireString(req.body.name, 'name');
+  const topic = await Topic.findOneAndUpdate(
+    { _id: req.params.topicId, type: 'vocabulary' },
+    { $set: { name } },
+    { new: true, runValidators: true }
+  );
+  if (!topic) throw new HttpError(404, 'KhÃ´ng tÃ¬m tháº¥y topic tá»« vá»±ng');
+  res.json(topic);
+});
+
+// DELETE /api/vocabulary/topics/:topicId  (xoÃ¡ kÃ¨m tá»« vá»±ng, tiáº¿n Ä‘á»™, phiÃªn quiz)
+exports.deleteTopic = asyncHandler(async (req, res) => {
+  const topic = await findTopic(req.params.topicId);
+  await Promise.all([
+    Vocabulary.deleteMany({ topic: topic._id }),
+    UserTopic.deleteMany({ topic: topic._id }),
+    QuizSession.deleteMany({ topic: topic._id }),
+  ]);
+  await Topic.deleteOne({ _id: topic._id });
+  res.status(204).end();
+});
+
+// POST /api/vocabulary/topics/:topicId/words  { word, meaning }
+exports.addWord = asyncHandler(async (req, res) => {
+  const topic = await findTopic(req.params.topicId);
+  const word = requireString(req.body.word, 'word');
+  const meaning = requireString(req.body.meaning, 'meaning');
+  const doc = await Vocabulary.create({ topic: topic._id, word, meaning });
+  res.status(201).json(doc);
+});
+
+// PUT /api/vocabulary/topics/:topicId/words/:wordId  { word?, meaning? }
+exports.updateWord = asyncHandler(async (req, res) => {
+  const update = {};
+  if (req.body.word !== undefined) {
+    update.word = requireString(req.body.word, 'word');
+  }
+  if (req.body.meaning !== undefined) {
+    update.meaning = requireString(req.body.meaning, 'meaning');
+  }
+  if (!Object.keys(update).length) {
+    throw new HttpError(400, 'KhÃ´ng cÃ³ dá»¯ liá»‡u Ä‘á»ƒ cáº­p nháº­t');
+  }
+  const doc = await Vocabulary.findOneAndUpdate(
+    { _id: req.params.wordId, topic: req.params.topicId },
+    { $set: update },
+    { new: true, runValidators: true }
+  );
+  if (!doc) throw new HttpError(404, 'KhÃ´ng tÃ¬m tháº¥y tá»« vá»±ng');
+  res.json(doc);
+});
+
+// DELETE /api/vocabulary/topics/:topicId/words/:wordId
+exports.deleteWord = asyncHandler(async (req, res) => {
+  const result = await Vocabulary.deleteOne({
+    _id: req.params.wordId,
+    topic: req.params.topicId,
+  });
+  if (!result.deletedCount) throw new HttpError(404, 'KhÃ´ng tÃ¬m tháº¥y tá»« vá»±ng');
+  res.status(204).end();
+});
+
+exports.findTopic = findTopic;
+
+
+
+
+=== FILE: vocabularyQuiz.js ===
+const Vocabulary = require('../models/Vocabulary');
+const UserTopic = require('../models/UserTopic');
+const QuizSession = require('../models/QuizSession');
+const HttpError = require('../utils/httpError');
+const asyncHandler = require('../utils/asyncHandler');
+const { requireId } = require('../utils/validate');
+const { buildAudioUrl } = require('../utils/audio');
+const { touchStreak } = require('../utils/streak');
+const config = require('../config');
+const { findTopic } = require('./vocabulary');
+
+// PhiÃªn gáº¯n vá»›i user nÃ o thÃ¬ chá»‰ user Ä‘Ã³ Ä‘Æ°á»£c tráº£ lá»i / ná»™p bÃ i.
+// PhiÃªn cá»§a khÃ¡ch (khÃ´ng cÃ³ user) thÃ¬ ai biáº¿t sessionId cÅ©ng dÃ¹ng Ä‘Æ°á»£c.
+function assertOwner(session, userId) {
+  if (session.user && String(session.user) !== String(userId || '')) {
+    throw new HttpError(403, 'PhiÃªn quiz nÃ y thuá»™c vá» tÃ i khoáº£n khÃ¡c');
+  }
+}
+
+const normalize = (s) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Chá»‘t phiÃªn: tÃ­nh Ä‘iá»ƒm 0-100 (tá»« chÆ°a tráº£ lá»i tÃ­nh lÃ  sai), chá»‰ chá»‘t Ä‘Ãºng 1 láº§n.
+async function finalize(sessionId) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const s = await QuizSession.findById(sessionId).lean();
+    if (!s) throw new HttpError(404, 'KhÃ´ng tÃ¬m tháº¥y phiÃªn quiz');
+    if (s.finished) return s;
+
+    const score = Math.round((s.correctCount / s.items.length) * 100);
+    // Äiá»u kiá»‡n correctCount Ä‘áº£m báº£o khÃ´ng chá»‘t nháº§m khi cÃ³ request check cháº¡y song song
+    const done = await QuizSession.findOneAndUpdate(
+      { _id: sessionId, finished: false, correctCount: s.correctCount },
+      { $set: { finished: true, score } },
+      { new: true }
+    ).lean();
+
+    if (done) {
+      if (done.user) {
+        await UserTopic.updateOne(
+          { user: done.user, topic: done.topic },
+          { $set: { ratio: done.score } },
+          { upsert: true }
+        );
+        // Xong má»™t bÃ i quiz (ká»ƒ cáº£ ná»™p sá»›m) thÃ¬ tÃ­nh lÃ  Ä‘Ã£ há»c hÃ´m nay
+        done.streak = await touchStreak(done.user);
+      }
+      return done;
+    }
+  }
+  throw new HttpError(409, 'PhiÃªn Ä‘ang Ä‘Æ°á»£c cáº­p nháº­t, vui lÃ²ng thá»­ láº¡i');
+}
+
+const summary = (s) => ({
+  sessionId: s._id,
+  finished: s.finished,
+  score: s.score,
+  correctCount: s.correctCount,
+  answeredCount: s.answeredCount,
+  total: s.items.length,
+});
+
+// GET /api/vocabulary/topics/:topicId/words  (cÃ³ token thÃ¬ gáº¯n phiÃªn vá»›i user)
+// Táº¡o phiÃªn quiz, tráº£ { sessionId, words: { <wordId>: "nghÄ©a tiáº¿ng Viá»‡t" } }
+// KhÃ´ng tráº£ tá»« tiáº¿ng Anh/audio vÃ¬ audio URL chá»©a luÃ´n Ä‘Ã¡p Ã¡n.
+exports.startQuiz = asyncHandler(async (req, res) => {
+  const topic = await findTopic(req.params.topicId);
+  const words = await Vocabulary.find({ topic: topic._id })
+    .select('meaning')
+    .lean();
+  if (!words.length) throw new HttpError(404, 'Topic chÆ°a cÃ³ tá»« vá»±ng');
+
+  // User láº¥y tá»« token, khÃ´ng nháº­n tá»« client nÃªn khÃ´ng giáº£ danh Ä‘Æ°á»£c
+  const user = req.userId || null;
+
+  const ordered = shuffle(words);
+  const session = await QuizSession.create({
+    user,
+    topic: topic._id,
+    items: ordered.map((w) => ({ word: w._id })),
+    expiresAt: new Date(Date.now() + config.quizSessionTtlMinutes * 60000),
+  });
+
+  const wordMap = {};
+  ordered.forEach((w) => {
+    wordMap[String(w._id)] = w.meaning;
+  });
+
+  res.status(201).json({
+    sessionId: session._id,
+    topic: { id: topic._id, name: topic.name },
+    total: ordered.length,
+    words: wordMap,
+  });
+});
+
+// POST /api/vocabulary/quiz/:sessionId/check  { wordId, answer } -> { correct, ... }
+// Má»—i tá»« chá»‰ Ä‘Æ°á»£c tráº£ lá»i 1 láº§n/phiÃªn. Tráº£ lá»i háº¿t tá»« cuá»‘i cÃ¹ng thÃ¬ tá»± chá»‘t Ä‘iá»ƒm.
+exports.checkAnswer = asyncHandler(async (req, res) => {
+  const { sessionId } = req.params;
+  const wordId = requireId(req.body.wordId, 'wordId');
+  if (typeof req.body.answer !== 'string') {
+    throw new HttpError(400, 'answer pháº£i lÃ  chuá»—i');
+  }
+
+  // Hai lÆ°á»£t Ä‘á»c database Ä‘á»™c láº­p nhau nÃªn cháº¡y song song (má»—i lÆ°á»£t Ä‘i qua máº¡ng tá»›i Atlas)
+  const [session, word] = await Promise.all([
+    QuizSession.findById(sessionId).lean(),
+    Vocabulary.findById(wordId).lean(),
+  ]);
+  if (!session) throw new HttpError(404, 'KhÃ´ng tÃ¬m tháº¥y phiÃªn quiz');
+  assertOwner(session, req.userId);
+  if (!session.items.some((i) => String(i.word) === wordId)) {
+    throw new HttpError(404, 'Tá»« nÃ y khÃ´ng thuá»™c phiÃªn quiz');
+  }
+  if (!word) throw new HttpError(404, 'Tá»« vá»±ng Ä‘Ã£ bá»‹ xoÃ¡');
+
+  const correct = normalize(req.body.answer) === normalize(word.word);
+
+  // Cáº­p nháº­t nguyÃªn tá»­: cháº·n tráº£ lá»i trÃ¹ng / phiÃªn Ä‘Ã£ xong / háº¿t háº¡n
+  const updated = await QuizSession.findOneAndUpdate(
+    {
+      _id: sessionId,
+      finished: false,
+      expiresAt: { $gt: new Date() },
+      items: { $elemMatch: { word: wordId, answered: false } },
+    },
+    {
+      $set: { 'items.$.answered': true, 'items.$.correct': correct },
+      $inc: { answeredCount: 1, correctCount: correct ? 1 : 0 },
+    },
+    { new: true }
+  ).lean();
+
+  if (!updated) {
+    if (session.finished) throw new HttpError(409, 'PhiÃªn quiz Ä‘Ã£ káº¿t thÃºc');
+    if (session.expiresAt <= new Date()) {
+      throw new HttpError(410, 'PhiÃªn quiz Ä‘Ã£ háº¿t háº¡n');
+    }
+    throw new HttpError(409, 'Tá»« nÃ y Ä‘Ã£ Ä‘Æ°á»£c tráº£ lá»i');
+  }
+
+  const result =
+    updated.answeredCount >= updated.items.length
+      ? await finalize(updated._id)
+      : null;
+
+  res.json({
+    correct,
+    correctAnswer: word.word,
+    audio: buildAudioUrl(word.word),
+    answeredCount: updated.answeredCount,
+    total: updated.items.length,
+    finished: Boolean(result),
+    ...(result && {
+      score: result.score,
+      correctCount: result.correctCount,
+      streak: result.streak || null,
+    }),
+  });
+});
+
+// POST /api/vocabulary/quiz/:sessionId/finish  (káº¿t thÃºc sá»›m, chÆ°a tráº£ lá»i = sai)
+exports.finishQuiz = asyncHandler(async (req, res) => {
+  const existing = await QuizSession.findById(req.params.sessionId)
+    .select('user')
+    .lean();
+  if (!existing) throw new HttpError(404, 'KhÃ´ng tÃ¬m tháº¥y phiÃªn quiz');
+  assertOwner(existing, req.userId);
+  const result = await finalize(req.params.sessionId);
+  res.json({ ...summary(result), streak: result.streak || null });
+});
+
+
+
+
+=== FILE: auth.js ===
+const jwt = require('jsonwebtoken');
+const config = require('../config');
+const User = require('../models/User');
+const HttpError = require('../utils/httpError');
+
+function readToken(req) {
+  const header = req.headers.authorization;
+  return header && header.startsWith('Bearer ') ? header.slice(7) : null;
+}
+
+// Báº¯t buá»™c Ä‘Äƒng nháº­p: Ä‘á»c JWT, gÃ¡n req.userId
+function authRequired(req, res, next) {
+  const token = readToken(req);
+  if (!token) return next(new HttpError(401, 'ChÆ°a Ä‘Äƒng nháº­p'));
+  try {
+    req.userId = jwt.verify(token, config.jwtSecret).id;
+    return next();
+  } catch (e) {
+    return next(new HttpError(401, 'Token khÃ´ng há»£p lá»‡ hoáº·c Ä‘Ã£ háº¿t háº¡n'));
+  }
+}
+
+// CÃ³ token há»£p lá»‡ thÃ¬ gÃ¡n req.userId, khÃ´ng thÃ¬ váº«n cho qua (khÃ¡ch)
+function authOptional(req, res, next) {
+  const token = readToken(req);
+  if (token) {
+    try {
+      req.userId = jwt.verify(token, config.jwtSecret).id;
+    } catch (e) {
+      // token sai coi nhÆ° khÃ¡ch
+    }
+  }
+  next();
+}
+
+// Chá»‰ quáº£n trá»‹ viÃªn: dÃ¹ng cho cÃ¡c thao tÃ¡c thÃªm, sá»­a, xoÃ¡ ná»™i dung há»c
+function adminRequired(req, res, next) {
+  authRequired(req, res, (err) => {
+    if (err) return next(err);
+    return User.findById(req.userId)
+      .select('role')
+      .lean()
+      .then((u) => {
+        if (!u) return next(new HttpError(401, 'TÃ i khoáº£n khÃ´ng cÃ²n tá»“n táº¡i'));
+        if (u.role !== 'admin') {
+          return next(new HttpError(403, 'Chá»‰ quáº£n trá»‹ viÃªn Ä‘Æ°á»£c thá»±c hiá»‡n thao tÃ¡c nÃ y'));
+        }
+        return next();
+      })
+      .catch(next);
+  });
+}
+
+module.exports = { authRequired, authOptional, adminRequired };
+
+
+
+
+=== FILE: error.js ===
+const HttpError = require('../utils/httpError');
+
+function notFound(req, res, next) {
+  next(new HttpError(404, 'Route khÃ´ng tá»“n táº¡i'));
+}
+
+// eslint-disable-next-line no-unused-vars
+function errorHandler(err, req, res, next) {
+  if (err instanceof HttpError) {
+    return res.status(err.status).json({ error: err.message });
+  }
+  if (err.name === 'ValidationError') {
+    const msg = Object.values(err.errors).map((e) => e.message).join('; ');
+    return res.status(400).json({ error: msg });
+  }
+  if (err.name === 'CastError') {
+    return res.status(400).json({ error: `GiÃ¡ trá»‹ khÃ´ng há»£p lá»‡: ${err.path}` });
+  }
+  if (err.code === 11000) {
+    const msg =
+      err.keyPattern && err.keyPattern.email
+        ? 'Email Ä‘Ã£ Ä‘Æ°á»£c Ä‘Äƒng kÃ½ hoáº·c Ä‘ang chá» xÃ¡c thá»±c'
+        : 'Dá»¯ liá»‡u Ä‘Ã£ tá»“n táº¡i';
+    return res.status(409).json({ error: msg });
+  }
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'JSON khÃ´ng há»£p lá»‡' });
+  }
+  console.error(err);
+  return res.status(500).json({ error: 'Lá»—i server' });
+}
+
+module.exports = { notFound, errorHandler };
+
+
+
+
+=== FILE: rateLimit.js ===
+const RateLimit = require('../models/RateLimit');
+const HttpError = require('../utils/httpError');
+const config = require('../config');
+
+// Giá»›i háº¡n sá»‘ láº§n gá»i theo IP trong má»™t khung thá»i gian cá»‘ Ä‘á»‹nh.
+// Khung cá»‘ Ä‘á»‹nh nÃªn ngay chá»— giao hai khung, má»™t IP cÃ³ thá»ƒ gá»i tá»‘i Ä‘a khoáº£ng gáº¥p Ä‘Ã´i giá»›i háº¡n: cháº¥p nháº­n Ä‘Æ°á»£c cho má»¥c Ä‘Ã­ch chá»‘ng dÃ² máº­t kháº©u vÃ  gá»­i email hÃ ng loáº¡t.
+function rateLimit({ name, windowSec, max, message }) {
+  return async (req, res, next) => {
+    if (!config.rateLimitEnabled) return next();
+    try {
+      const windowMs = windowSec * 1000;
+      const bucket = Math.floor(Date.now() / windowMs);
+      const filter = { key: `${name}:${req.ip}:${bucket}` };
+      const update = {
+        $inc: { count: 1 },
+        $setOnInsert: { expiresAt: new Date((bucket + 2) * windowMs) },
+      };
+      let doc;
+      try {
+        doc = await RateLimit.findOneAndUpdate(filter, update, { upsert: true, new: true }).lean();
+      } catch (e) {
+        if (e.code !== 11000) throw e;
+        // Hai request cÃ¹ng lÃºc cÃ¹ng táº¡o báº£n ghi Ä‘áº§u tiÃªn: thá»­ láº¡i má»™t láº§n, láº§n nÃ y báº£n ghi Ä‘Ã£ tá»“n táº¡i
+        doc = await RateLimit.findOneAndUpdate(filter, update, { upsert: true, new: true }).lean();
+      }
+      if (doc.count > max) {
+        const retry = Math.ceil(((bucket + 1) * windowMs - Date.now()) / 1000);
+        res.setHeader('Retry-After', String(retry));
+        return next(new HttpError(429, message || `Thao tÃ¡c quÃ¡ nhanh, hÃ£y thá»­ láº¡i sau ${retry} giÃ¢y`));
+      }
+      return next();
+    } catch (e) {
+      return next(e);
+    }
+  };
+}
+
+module.exports = { rateLimit };
+
+
+
+
+=== FILE: PendingRegistration.js ===
+const mongoose = require('mongoose');
+
+// ÄÄƒng kÃ½ Ä‘ang chá» xÃ¡c thá»±c OTP. Chá»‰ khi nháº­p Ä‘Ãºng mÃ£ má»›i táº¡o User tháº­t.
+// Máº­t kháº©u vÃ  mÃ£ OTP Ä‘á»u chá»‰ lÆ°u dáº¡ng bÄƒm.
+const pendingSchema = new mongoose.Schema({
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  nickname: { type: String, required: true, trim: true, maxlength: 50 },
+  passwordHash: { type: String, required: true },
+  otpHash: { type: String, required: true },
+  attempts: { type: Number, default: 0 }, // sá»‘ láº§n Ä‘Ã£ nháº­p mÃ£ cho mÃ£ hiá»‡n táº¡i
+  sends: { type: Number, default: 1 }, // tá»•ng sá»‘ láº§n Ä‘Ã£ gá»­i mÃ£ (chá»‘ng gá»­i email liÃªn tá»¥c)
+  lastSentAt: { type: Date, required: true },
+  // MongoDB tá»± xoÃ¡ báº£n ghi háº¿t háº¡n (TTL index, cÃ³ thá»ƒ trá»… tá»›i khoáº£ng 1 phÃºt)
+  expiresAt: { type: Date, required: true, index: { expireAfterSeconds: 0 } },
+});
+
+module.exports = mongoose.model('PendingRegistration', pendingSchema);
+
+
+
+
+=== FILE: Quiz.js ===
+const mongoose = require('mongoose');
+
+// Má»—i láº§n má»Ÿ 1 bÃ i reading sáº½ upsert 1 báº£n ghi quiz Ä‘i kÃ¨m topic cá»§a bÃ i Ä‘Ã³
+const quizSchema = new mongoose.Schema(
+  {
+    type: { type: String, enum: ['reading'], default: 'reading' },
+    topic: { type: mongoose.Schema.Types.ObjectId, ref: 'Topic', required: true },
+    reading: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Reading',
+      required: true,
+      unique: true,
+    },
+    views: { type: Number, default: 0 },
+  },
+  { timestamps: true }
+);
+
+module.exports = mongoose.model('Quiz', quizSchema);
+
+
+
+
+=== FILE: QuizSession.js ===
+const mongoose = require('mongoose');
+
+// PhiÃªn lÃ m quiz tá»« vá»±ng, táº¡o khi GET danh sÃ¡ch tá»« cá»§a 1 topic
+const itemSchema = new mongoose.Schema(
+  {
+    word: { type: mongoose.Schema.Types.ObjectId, ref: 'Vocabulary', required: true },
+    answered: { type: Boolean, default: false },
+    correct: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
+const quizSessionSchema = new mongoose.Schema(
+  {
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    topic: { type: mongoose.Schema.Types.ObjectId, ref: 'Topic', required: true },
+    items: { type: [itemSchema], default: [] },
+    answeredCount: { type: Number, default: 0 },
+    correctCount: { type: Number, default: 0 },
+    finished: { type: Boolean, default: false },
+    score: { type: Number, default: null }, // 0-100, cÃ³ khi finished
+    // MongoDB tá»± xoÃ¡ phiÃªn háº¿t háº¡n (TTL index)
+    expiresAt: { type: Date, required: true, index: { expireAfterSeconds: 0 } },
+  },
+  { timestamps: true }
+);
+
+module.exports = mongoose.model('QuizSession', quizSessionSchema);
+
+
+
+
+=== FILE: RateLimit.js ===
+const mongoose = require('mongoose');
+
+// Bá»™ Ä‘áº¿m sá»‘ láº§n gá»i theo (tÃªn giá»›i háº¡n, IP, khung thá»i gian). LÆ°u trong MongoDB vÃ¬ trÃªn Vercel
+// cÃ¡c láº§n gá»i cháº¡y á»Ÿ nhiá»u instance khÃ¡c nhau, bá»™ Ä‘áº¿m trong bá»™ nhá»› sáº½ khÃ´ng dÃ¹ng chung Ä‘Æ°á»£c.
+const rateLimitSchema = new mongoose.Schema({
+  key: { type: String, required: true, unique: true },
+  count: { type: Number, default: 0 },
+  // MongoDB tá»± xoÃ¡ báº£n ghi háº¿t háº¡n (TTL index, cÃ³ thá»ƒ trá»… tá»›i khoáº£ng 1 phÃºt)
+  expiresAt: { type: Date, required: true, index: { expireAfterSeconds: 0 } },
+});
+
+module.exports = mongoose.model('RateLimit', rateLimitSchema);
+
+
+
+
+=== FILE: Reading.js ===
+const mongoose = require('mongoose');
+
+// Gáº¯n topic trá»±c tiáº¿p vÃ o bÃ i Ä‘á»c (thay cho báº£ng ná»‘i reading_ id_topic | id_reading)
+const readingSchema = new mongoose.Schema(
+  {
+    topic: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Topic',
+      required: true,
+      index: true,
+    },
+    title: { type: String, required: true, trim: true, maxlength: 200 },
+    content: { type: String, required: true, maxlength: 20000 },
+  },
+  { timestamps: true }
+);
+
+module.exports = mongoose.model('Reading', readingSchema);
+
+
+
+
+=== FILE: Topic.js ===
+const mongoose = require('mongoose');
+
+// DÃ¹ng chung cho reading vÃ  vocabulary, phÃ¢n biá»‡t báº±ng field `type`
+const topicSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true, maxlength: 100 },
+    type: { type: String, required: true, enum: ['reading', 'vocabulary'] },
+  },
+  { timestamps: true }
+);
+
+topicSchema.index({ type: 1, name: 1 }, { unique: true });
+
+module.exports = mongoose.model('Topic', topicSchema);
+
+
+
+
+=== FILE: User.js ===
+const mongoose = require('mongoose');
+
+const userSchema = new mongoose.Schema(
+  {
+    nickname: { type: String, required: true, trim: true, maxlength: 50 },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+    },
+    password: { type: String, required: true, select: false }, // hash bcrypt
+    role: { type: String, enum: ['user', 'admin'], default: 'user' },
+    timeActive: { type: Number, default: 0, min: 0 }, // tá»•ng sá»‘ phÃºt há»c
+    // Streak: ngÃ y há»c gáº§n nháº¥t theo giá» Viá»‡t Nam (YYYY-MM-DD), chuá»—i hiá»‡n táº¡i vÃ  dÃ i nháº¥t
+    lastActiveDate: { type: String, default: null },
+    currentStreak: { type: Number, default: 0, min: 0 },
+    longestStreak: { type: Number, default: 0, min: 0 },
+    // CÃ¡c ngÃ y Ä‘Ã£ há»c (tá»‘i Ä‘a 400 ngÃ y gáº§n nháº¥t) Ä‘á»ƒ váº½ lá»‹ch; chá»‰ láº¥y khi cáº§n
+    activeDays: { type: [String], default: [], select: false },
+  },
+  { timestamps: { createdAt: 'created', updatedAt: false } }
+);
+
+module.exports = mongoose.model('User', userSchema);
+
+
+
+
+=== FILE: UserTopic.js ===
+const mongoose = require('mongoose');
+
+// Tá»‰ lá»‡ hoÃ n thÃ nh / Ä‘iá»ƒm gáº§n nháº¥t cá»§a user trÃªn 1 topic (0-100)
+const userTopicSchema = new mongoose.Schema(
+  {
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    topic: { type: mongoose.Schema.Types.ObjectId, ref: 'Topic', required: true },
+    ratio: { type: Number, default: 0, min: 0, max: 100 },
+  },
+  { timestamps: true }
+);
+
+userTopicSchema.index({ user: 1, topic: 1 }, { unique: true });
+
+module.exports = mongoose.model('UserTopic', userTopicSchema);
+
+
+
+
+=== FILE: Vocabulary.js ===
+const mongoose = require('mongoose');
+const { buildAudioUrl } = require('../utils/audio');
+
+const vocabularySchema = new mongoose.Schema(
+  {
+    topic: { type: mongoose.Schema.Types.ObjectId, ref: 'Topic', required: true },
+    word: { type: String, required: true, trim: true, maxlength: 100 },
+    meaning: { type: String, required: true, trim: true, maxlength: 300 }, // nghÄ©a tiáº¿ng Viá»‡t
+  },
+  { timestamps: true, toJSON: { virtuals: true }, id: false }
+);
+
+vocabularySchema.index({ topic: 1, word: 1 }, { unique: true });
+
+// Chá»‰ tráº£ ra á»Ÿ cháº¿ Ä‘á»™ há»c. KHÃ”NG Ä‘Æ°a vÃ o danh sÃ¡ch quiz vÃ¬ URL chá»©a luÃ´n Ä‘Ã¡p Ã¡n.
+vocabularySchema.virtual('audio').get(function audio() {
+  return buildAudioUrl(this.word);
+});
+
+module.exports = mongoose.model('Vocabulary', vocabularySchema);
+
+
+
+
+=== FILE: auth.js ===
+const router = require('express').Router();
+const c = require('../controllers/auth');
+const { authRequired } = require('../middlewares/auth');
+const { rateLimit } = require('../middlewares/rateLimit');
+
+// Giá»›i háº¡n theo IP: chá»‘ng dÃ² máº­t kháº©u, dÃ² mÃ£ OTP vÃ  báº¯t server gá»­i email hÃ ng loáº¡t
+const loginLimit = rateLimit({ name: 'login', windowSec: 15 * 60, max: 10, message: 'ÄÄƒng nháº­p sai quÃ¡ nhiá»u láº§n, hÃ£y thá»­ láº¡i sau Ã­t phÃºt' });
+const registerLimit = rateLimit({ name: 'register', windowSec: 60 * 60, max: 8, message: 'ÄÄƒng kÃ½ quÃ¡ nhiá»u láº§n tá»« Ä‘á»‹a chá»‰ nÃ y, hÃ£y thá»­ láº¡i sau' });
+const otpLimit = rateLimit({ name: 'otp', windowSec: 15 * 60, max: 15, message: 'Thá»­ mÃ£ quÃ¡ nhiá»u láº§n, hÃ£y thá»­ láº¡i sau Ã­t phÃºt' });
+const resendLimit = rateLimit({ name: 'resend', windowSec: 60 * 60, max: 10, message: 'Gá»­i láº¡i mÃ£ quÃ¡ nhiá»u láº§n, hÃ£y thá»­ láº¡i sau' });
+
+router.get('/config', c.publicConfig); // frontend há»i: cÃ³ báº­t OTP / Turnstile khÃ´ng
+router.post('/register', registerLimit, c.register);
+router.post('/verify-otp', otpLimit, c.verifyOtp);
+router.post('/resend-otp', resendLimit, c.resendOtp);
+router.post('/login', loginLimit, c.login);
+router.get('/me', authRequired, c.me);
+
+module.exports = router;
+
+
+
+
+=== FILE: index.js ===
+const router = require('express').Router();
+
+router.use('/auth', require('./auth'));
+router.use('/reading', require('./reading'));
+router.use('/vocabulary', require('./vocabulary'));
+router.use('/streak', require('./streak'));
+
+module.exports = router;
+
+
+
+
+=== FILE: reading.js ===
+const router = require('express').Router();
+const c = require('../controllers/reading');
+const { idParam } = require('../utils/validate');
+const { authOptional, adminRequired } = require('../middlewares/auth');
+
+router.param('id', idParam);
+router.param('topicId', idParam);
+
+// '/topics' pháº£i khai bÃ¡o trÆ°á»›c '/:id'
+router.get('/topics', c.listTopics);
+router.post('/topics', adminRequired, c.createTopic);
+router.put('/topics/:topicId', adminRequired, c.updateTopic);
+router.delete('/topics/:topicId', adminRequired, c.deleteTopic);
+
+router.get('/', c.listReadings);
+router.post('/', adminRequired, c.createReading);
+router.get('/:id', authOptional, c.getReading);
+router.put('/:id', adminRequired, c.updateReading);
+router.delete('/:id', adminRequired, c.deleteReading);
+
+module.exports = router;
+
+
+
+
+=== FILE: streak.js ===
+const router = require('express').Router();
+const c = require('../controllers/streak');
+const { authRequired } = require('../middlewares/auth');
+
+router.use(authRequired);
+router.post('/ping', c.ping);
+router.get('/', c.getStreak);
+
+module.exports = router;
+
+
+
+
+=== FILE: vocabulary.js ===
+const router = require('express').Router();
+const c = require('../controllers/vocabulary');
+const q = require('../controllers/vocabularyQuiz');
+const { idParam } = require('../utils/validate');
+const { authOptional, adminRequired } = require('../middlewares/auth');
+const { rateLimit } = require('../middlewares/rateLimit');
+
+// Má»—i láº§n má»Ÿ bÃ i quiz táº¡o má»™t báº£n ghi phiÃªn trong database nÃªn cáº§n giá»›i háº¡n Ä‘á»ƒ khÃ´ng bá»‹ lÃ m Ä‘áº§y
+const quizStartLimit = rateLimit({ name: 'quiz-start', windowSec: 10 * 60, max: 60 });
+
+router.param('topicId', idParam);
+router.param('wordId', idParam);
+router.param('sessionId', idParam);
+
+// Topic: xem cÃ´ng khai, thÃªm sá»­a xoÃ¡ chá»‰ quáº£n trá»‹ viÃªn
+router.get('/topics', c.listTopics);
+router.post('/topics', adminRequired, c.createTopic);
+router.get('/topics/:topicId', c.getTopic);
+router.put('/topics/:topicId', adminRequired, c.updateTopic);
+router.delete('/topics/:topicId', adminRequired, c.deleteTopic);
+
+// Tá»« vá»±ng trong topic
+router.post('/topics/:topicId/words', adminRequired, c.addWord);
+router.put('/topics/:topicId/words/:wordId', adminRequired, c.updateWord);
+router.delete('/topics/:topicId/words/:wordId', adminRequired, c.deleteWord);
+
+// Quiz: GET words táº¡o session (cÃ³ token thÃ¬ gáº¯n phiÃªn vá»›i user), rá»“i check tá»«ng Ä‘Ã¡p Ã¡n, finish
+router.get('/topics/:topicId/words', authOptional, quizStartLimit, q.startQuiz);
+router.post('/quiz/:sessionId/check', authOptional, q.checkAnswer);
+router.post('/quiz/:sessionId/finish', authOptional, q.finishQuiz);
+
+module.exports = router;
+
+
+
+
+=== FILE: seed.js ===
+// Náº¡p dá»¯ liá»‡u máº«u vÃ o MongoDB: npm run seed
+// Chá»‰ thÃªm nhá»¯ng gÃ¬ chÆ°a cÃ³ (so theo tÃªn/tiÃªu Ä‘á»/tá»«), nÃªn cháº¡y láº¡i nhiá»u láº§n váº«n an toÃ n.
+const mongoose = require('mongoose');
+const connectDB = require('../config/db');
+const Topic = require('../models/Topic');
+const Reading = require('../models/Reading');
+const Vocabulary = require('../models/Vocabulary');
+const { SEED } = require('../../public/mock-data.js');
+
+async function upsertTopic(name, type) {
+  return Topic.findOneAndUpdate(
+    { name, type },
+    { $setOnInsert: { name, type } },
+    { upsert: true, new: true }
+  );
+}
+
+async function main() {
+  await connectDB();
+  const count = { topics: 0, readings: 0, words: 0 };
+
+  const readingTopics = [];
+  for (const name of SEED.readingTopics) {
+    readingTopics.push(await upsertTopic(name, 'reading'));
+    count.topics += 1;
+  }
+  for (const [ti, title, content] of SEED.readings) {
+    const r = await Reading.updateOne(
+      { title },
+      { $setOnInsert: { topic: readingTopics[ti]._id, title, content } },
+      { upsert: true }
+    );
+    count.readings += r.upsertedCount;
+  }
+
+  for (const [name, list] of SEED.vocab) {
+    const topic = await upsertTopic(name, 'vocabulary');
+    count.topics += 1;
+    for (const pair of list.split('; ')) {
+      const [word, meaning] = pair.split('=');
+      const r = await Vocabulary.updateOne(
+        { topic: topic._id, word },
+        { $setOnInsert: { topic: topic._id, word, meaning } },
+        { upsert: true }
+      );
+      count.words += r.upsertedCount;
+    }
+  }
+
+  console.log(`ÄÃ£ thÃªm má»›i: ${count.readings} bÃ i Ä‘á»c, ${count.words} tá»« vá»±ng (topic Ä‘Ã£ Ä‘áº£m báº£o Ä‘á»§).`);
+  await mongoose.disconnect();
+}
+
+main().catch(async (err) => {
+  console.error('Seed lá»—i:', err.message);
+  await mongoose.disconnect().catch(() => {});
+  process.exit(1);
+});
+
+
+
+
+=== FILE: asyncHandler.js ===
+// Bá»c controller async Ä‘á»ƒ lá»—i tá»± chuyá»ƒn sang error middleware
+module.exports = (fn) => (req, res, next) =>
+  Promise.resolve(fn(req, res, next)).catch(next);
+
+
+
+
+=== FILE: audio.js ===
+const { audioBaseUrl } = require('../config');
+
+// Quy táº¯c theo vÃ­ dá»¥: hello -> h/hel/hello/hello.mp3
+// Tá»« ngáº¯n hÆ¡n 3 kÃ½ tá»± Ä‘Æ°á»£c Ä‘á»‡m báº±ng "_" (chÆ°a kiá»ƒm chá»©ng vá»›i má»i tá»«).
+// Tráº£ vá» null náº¿u tá»« chá»©a kÃ½ tá»± láº¡ -> frontend nÃªn áº©n nÃºt phÃ¡t Ã¢m.
+function buildAudioUrl(word) {
+  if (typeof word !== 'string') return null;
+  const slug = word.trim().toLowerCase().replace(/\s+/g, '_');
+  if (!/^[a-z_-]+$/.test(slug)) return null;
+  const first = slug[0];
+  const three = slug.slice(0, 3).padEnd(3, '_');
+  return `${audioBaseUrl}/${first}/${three}/${slug}/${slug}.mp3`;
+}
+
+module.exports = { buildAudioUrl };
+
+
+
+
+=== FILE: date.js ===
+// NgÃ y theo mÃºi giá» Viá»‡t Nam, dáº¡ng YYYY-MM-DD.
+// Viá»‡t Nam khÃ´ng cÃ³ giá» mÃ¹a hÃ¨ nÃªn lÃ¹i Ä‘Ãºng 24 giá» lÃ  ra "hÃ´m qua".
+const fmt = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Ho_Chi_Minh',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+const vnDate = (d = new Date()) => fmt.format(d);
+const vnYesterday = () => vnDate(new Date(Date.now() - 86400000));
+
+module.exports = { vnDate, vnYesterday };
+
+
+
+
+=== FILE: httpError.js ===
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+module.exports = HttpError;
+
+
+
+
+=== FILE: mailer.js ===
+const config = require('../config');
+
+const esc = (s) =>
+  String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+let transport;
+function getTransport() {
+  if (!transport) {
+    // Náº¡p khi cáº§n Ä‘á»ƒ server váº«n cháº¡y Ä‘Æ°á»£c lÃºc OTP táº¯t, ká»ƒ cáº£ khi chÆ°a cÃ i nodemailer
+    const nodemailer = require('nodemailer');
+    const { host, port, secure, user, pass } = config.mail;
+    transport = nodemailer.createTransport({
+      host,
+      port,
+      secure,
+      auth: user ? { user, pass } : undefined,
+    });
+  }
+  return transport;
+}
+
+// Gá»­i mÃ£ OTP. ChÆ°a cáº¥u hÃ¬nh SMTP_HOST thÃ¬ khi phÃ¡t triá»ƒn chá»‰ in mÃ£ ra console (production thÃ¬ bÃ¡o lá»—i).
+async function sendOtpMail({ to, nickname, code }) {
+  const { mail, otp, isProd } = config;
+  if (!mail.host) {
+    if (isProd) throw new Error('ChÆ°a cáº¥u hÃ¬nh SMTP_HOST');
+    console.log(`[DEV] ChÆ°a cáº¥u hÃ¬nh SMTP nÃªn khÃ´ng gá»­i email. MÃ£ OTP cá»§a ${to} lÃ : ${code}`);
+    return;
+  }
+  const text =
+    `ChÃ o ${nickname},\n\nMÃ£ xÃ¡c thá»±c tÃ i khoáº£n Vá»Ÿ tiáº¿ng Anh cá»§a báº¡n lÃ : ${code}\n` +
+    `MÃ£ cÃ³ hiá»‡u lá»±c trong ${otp.ttlMinutes} phÃºt. Náº¿u báº¡n khÃ´ng Ä‘Äƒng kÃ½, hÃ£y bá» qua email nÃ y.`;
+  const html =
+    `<div style="font-family:Segoe UI,Arial,sans-serif;color:#17233f;max-width:420px">` +
+    `<p>ChÃ o ${esc(nickname)},</p><p>MÃ£ xÃ¡c thá»±c tÃ i khoáº£n Vá»Ÿ tiáº¿ng Anh cá»§a báº¡n lÃ :</p>` +
+    `<p style="font-size:32px;font-weight:700;letter-spacing:8px;margin:12px 0">${esc(code)}</p>` +
+    `<p>MÃ£ cÃ³ hiá»‡u lá»±c trong ${otp.ttlMinutes} phÃºt. Náº¿u báº¡n khÃ´ng Ä‘Äƒng kÃ½, hÃ£y bá» qua email nÃ y.</p></div>`;
+  await getTransport().sendMail({
+    from: mail.from,
+    to,
+    subject: 'MÃ£ xÃ¡c thá»±c tÃ i khoáº£n Vá»Ÿ tiáº¿ng Anh',
+    text,
+    html,
+  });
+}
+
+module.exports = { sendOtpMail };
+
+
+
+
+=== FILE: otp.js ===
+const crypto = require('crypto');
+const config = require('../config');
+
+// MÃ£ 6 chá»¯ sá»‘ sinh báº±ng bá»™ sinh sá»‘ ngáº«u nhiÃªn máº­t mÃ£
+const makeOtp = () => String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+
+// Chá»‰ lÆ°u báº£n bÄƒm (HMAC cÃ³ khoÃ¡ bÃ­ máº­t + email) nÃªn lá»™ database cÅ©ng khÃ´ng Ä‘á»c Ä‘Æ°á»£c mÃ£
+const hashOtp = (email, code) =>
+  crypto.createHmac('sha256', config.jwtSecret).update(`${email}:${code}`).digest('hex');
+
+// So sÃ¡nh thá»i gian khÃ´ng Ä‘á»•i Ä‘á»ƒ trÃ¡nh dÃ² mÃ£ qua chÃªnh lá»‡ch thá»i gian pháº£n há»“i
+function safeEqual(a, b) {
+  const x = Buffer.from(String(a));
+  const y = Buffer.from(String(b));
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
+}
+
+module.exports = { makeOtp, hashOtp, safeEqual };
+
+
+
+
+=== FILE: streak.js ===
+const User = require('../models/User');
+const { vnDate, vnYesterday } = require('./date');
+
+// Chuá»—i chá»‰ cÃ²n hiá»‡u lá»±c náº¿u láº§n há»c gáº§n nháº¥t lÃ  hÃ´m nay hoáº·c hÃ´m qua
+function effectiveStreak(user) {
+  const last = user.lastActiveDate;
+  const alive = last === vnDate() || last === vnYesterday();
+  return {
+    currentStreak: alive ? user.currentStreak : 0,
+    longestStreak: user.longestStreak,
+  };
+}
+
+// Ghi nháº­n user Ä‘Ã£ há»c hÃ´m nay (Ä‘á»c bÃ i hoáº·c xong quiz). Gá»i nhiá»u láº§n trong ngÃ y váº«n chá»‰ tÃ­nh 1.
+// Äiá»u kiá»‡n lastActiveDate trong updateOne cháº·n hai request song song cÃ¹ng cá»™ng chuá»—i.
+async function touchStreak(userId) {
+  const today = vnDate();
+  for (let i = 0; i < 3; i += 1) {
+    const user = await User.findById(userId).select(
+      'lastActiveDate currentStreak longestStreak'
+    );
+    if (!user) return null;
+    if (user.lastActiveDate === today) {
+      return { ...effectiveStreak(user), alreadyPinged: true };
+    }
+
+    const current =
+      user.lastActiveDate === vnYesterday() ? user.currentStreak + 1 : 1;
+    const longest = Math.max(user.longestStreak, current);
+
+    const res = await User.updateOne(
+      { _id: userId, lastActiveDate: user.lastActiveDate },
+      {
+        $set: {
+          lastActiveDate: today,
+          currentStreak: current,
+          longestStreak: longest,
+        },
+        $push: { activeDays: { $each: [today], $slice: -400 } },
+      }
+    );
+    if (res.modifiedCount === 1) {
+      return { currentStreak: current, longestStreak: longest, alreadyPinged: false };
+    }
+  }
+  const user = await User.findById(userId).select(
+    'lastActiveDate currentStreak longestStreak'
+  );
+  return user ? { ...effectiveStreak(user), alreadyPinged: true } : null;
+}
+
+module.exports = { effectiveStreak, touchStreak };
+
+
+
+
+=== FILE: turnstile.js ===
+const config = require('../config');
+const HttpError = require('./httpError');
+
+const VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
+
+// Kiá»ƒm tra token Turnstile á»Ÿ server. Táº¯t TURNSTILE_ENABLED thÃ¬ bá» qua.
+// Token chá»‰ dÃ¹ng Ä‘Æ°á»£c má»™t láº§n vÃ  háº¿t háº¡n sau vÃ i phÃºt, nÃªn luÃ´n pháº£i xÃ¡c minh á»Ÿ Ä‘Ã¢y, khÃ´ng tin client.
+async function verifyTurnstile(token, ip) {
+  const t = config.turnstile;
+  if (!t.enabled) return;
+  if (typeof token !== 'string' || !token || token.length > 2048) {
+    throw new HttpError(400, 'HÃ£y hoÃ n thÃ nh bÆ°á»›c xÃ¡c minh "TÃ´i khÃ´ng pháº£i ngÆ°á»i mÃ¡y"');
+  }
+  let data;
+  try {
+    const body = new URLSearchParams({ secret: t.secretKey, response: token });
+    if (ip) body.set('remoteip', ip);
+    const res = await fetch(VERIFY_URL, {
+      method: 'POST',
+      body,
+      signal: AbortSignal.timeout(8000),
+    });
+    data = await res.json();
+  } catch (e) {
+    // KhÃ´ng liÃªn láº¡c Ä‘Æ°á»£c Cloudflare thÃ¬ tá»« chá»‘i (fail closed), khÃ´ng cho qua
+    throw new HttpError(503, 'KhÃ´ng káº¿t ná»‘i Ä‘Æ°á»£c dá»‹ch vá»¥ xÃ¡c minh, hÃ£y thá»­ láº¡i sau');
+  }
+  if (!data || data.success !== true) {
+    throw new HttpError(400, 'XÃ¡c minh khÃ´ng thÃ nh cÃ´ng, hÃ£y thá»­ láº¡i');
+  }
+}
+
+module.exports = { verifyTurnstile };
+
+
+
+
+=== FILE: validate.js ===
+const HttpError = require('./httpError');
+
+const ID_RE = /^[a-f\d]{24}$/i;
+
+// Chá»‰ nháº­n string 24 kÃ½ tá»± hex -> cháº·n luÃ´n kiá»ƒu object injection ({ "$ne": ... })
+const isId = (v) => typeof v === 'string' && ID_RE.test(v);
+
+// DÃ¹ng vá»›i router.param('tenParam', idParam)
+function idParam(req, res, next, value, name) {
+  if (!isId(value)) return next(new HttpError(400, `${name} khÃ´ng há»£p lá»‡`));
+  return next();
+}
+
+function requireString(value, field) {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new HttpError(400, `${field} lÃ  báº¯t buá»™c`);
+  }
+  return value.trim();
+}
+
+function requireId(value, field) {
+  if (!isId(value)) throw new HttpError(400, `${field} khÃ´ng há»£p lá»‡`);
+  return value;
+}
+
+module.exports = { isId, idParam, requireString, requireId };
+
+
+
+
